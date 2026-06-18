@@ -195,8 +195,12 @@ espacio vectorial. La app Next llama a ese servicio durante la ingesta.
 
 ## 11. Servicios desplegados
 
-| Servicio | Rol |
-|----------|-----|
-| `newshub-web` | Next.js (UI + API + ingesta). Ya desplegado. |
-| `newshub-db` | PostgreSQL 17 **+ `pgvector`** (habilitar extensión). Ya desplegado (falta pgvector). |
-| `newshub-embed` | **Nuevo**: microservicio de embeddings self-hosted `multilingual-e5-small` 384d (`POST /embed`). Por crear. |
+| Servicio | Rol | Estado |
+|----------|-----|--------|
+| `newshub-web` | Next.js (UI + API + ingesta). | ✅ Desplegado |
+| `newshub-db-vec` | PostgreSQL 17 **+ `pgvector`**. | ✅ Desplegado (pgvector 0.8) |
+| `newshub-embed` | Microservicio de embeddings `multilingual-e5-small` 384d (`POST /embed`, token). | ✅ Desplegado |
+
+> v0.2 desplegado el 2026-06-19: clustering semántico operativo en producción
+> (web → embed por red, protegido con `EMBED_TOKEN`). Las **tendencias** se llenan
+> conforme el cron acumula coincidencias de la misma historia entre fuentes.
