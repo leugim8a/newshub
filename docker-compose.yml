@@ -1,0 +1,24 @@
+# NewsHub — Docker Compose para desarrollo local
+# Uso: docker compose up -d
+#
+# Puerto 5434 para no chocar con michael (5433) ni subastamicoche (5432).
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: newshub
+      POSTGRES_PASSWORD: newshub_dev
+      POSTGRES_DB: newshub
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newshub -d newshub"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:

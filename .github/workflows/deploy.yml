@@ -1,0 +1,31 @@
+name: Deploy to Coolify
+
+# Dispara un deploy en Coolify cada vez que main avanza, llamando a su API
+# directamente (mismo patrón que michael).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  trigger-coolify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger Coolify deploy
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_API_URL: ${{ secrets.COOLIFY_API_URL }}
+          APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+        run: |
+          set -euo pipefail
+          echo "Triggering deploy for app $APP_UUID via $COOLIFY_API_URL"
+          RESP=$(curl -fsS -X POST \
+            -H "Authorization: Bearer $COOLIFY_TOKEN" \
+            "$COOLIFY_API_URL/api/v1/deploy?uuid=$APP_UUID&force=false")
+          echo "Coolify response: $RESP"
