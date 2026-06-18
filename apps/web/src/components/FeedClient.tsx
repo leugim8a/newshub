@@ -16,8 +16,9 @@ export function FeedClient() {
   const [active, setActive] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const loadFeed = useCallback(async (topic: string | null) => {
-    const url = topic ? `/api/feed?topic=${topic}` : '/api/feed'
+  const loadFeed = useCallback(async (sel: string | null) => {
+    const url =
+      sel === 'all' ? '/api/feed?all=1' : sel ? `/api/feed?topic=${sel}` : '/api/feed'
     const res = await fetch(url)
     const data = (await res.json()) as { articles: Article[] }
     setArticles(data.articles)
@@ -64,7 +65,8 @@ export function FeedClient() {
 
       {/* Chips de temas */}
       <div className="mb-6 flex flex-wrap gap-2">
-        <Chip label="Todo" active={active === null} onClick={() => setActive(null)} />
+        <Chip label={t('topics.following')} active={active === null} onClick={() => setActive(null)} />
+        <Chip label={t('feed.all')} active={active === 'all'} onClick={() => setActive('all')} />
         {topics.map((tp) => (
           <Chip
             key={tp.slug}

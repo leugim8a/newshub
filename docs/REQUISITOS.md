@@ -161,8 +161,9 @@ Ver detalle en [`ARQUITECTURA.md`](./ARQUITECTURA.md).
 - **Cron de ingesta**: cada **5 min** (bajable a 1-2 min con tráfico).
 - **Rate-limit de alertas**: máx **1 alerta por tema cada 30 min**; **dedupe por cluster**
   en ventana de **24 h**.
-- **Clustering**: umbral coseno **~0.82**, ventana de tendencia **6 h**, cluster mínimo
-  **3 artículos** (y ≥2 fuentes para alertar).
+- **Clustering**: umbral coseno **0.92** (calibrado: e5 comprime las similitudes en rango
+  alto — misma historia ~0.95, mismo tema/otra historia ~0.90), ventana de tendencia **6 h**,
+  cluster mínimo **3 artículos** (y ≥2 fuentes para alertar).
 
 > **No quedan decisiones de producto abiertas.** Lo que reste se resolverá al implementar
 > (detalles de UI, esquema exacto, tuning sobre tráfico real).

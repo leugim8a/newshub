@@ -21,10 +21,19 @@ function RealtimeListener() {
   return null
 }
 
+// Garantiza que existe un perfil anónimo (cookie) en cuanto carga la app.
+function ProfileBootstrap() {
+  useEffect(() => {
+    fetch('/api/profile').catch(() => {})
+  }, [])
+  return null
+}
+
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <I18nProvider>
       {children}
+      <ProfileBootstrap />
       <RealtimeListener />
       <Toaster />
     </I18nProvider>

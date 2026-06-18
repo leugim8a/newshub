@@ -13,3 +13,7 @@ dist/
 # Build info
 **/public/build-info.json
 .commit
+
+# Embeddings model cache (se descarga/precarga en build)
+.cache/
+services/embed/.cache/

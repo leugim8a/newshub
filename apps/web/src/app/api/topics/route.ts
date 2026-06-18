@@ -1,26 +1,116 @@
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
+import { PROFILE_COOKIE, cookieOptions, createProfile, getProfileId } from '@/lib/profile'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
-  const { rows } = await query(
-    `SELECT t.slug, t.label, t.lang, t.followed,
-            count(at.article_id) AS article_count
-     FROM topics t
-     LEFT JOIN article_topics at ON at.topic_id = t.id
-     GROUP BY t.id
-     ORDER BY t.label`,
-  )
-  return NextResponse.json({ topics: rows })
+function slugify(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // quita diacríticos
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
 }
 
-// PATCH /api/topics  { slug, followed }  — seguir / dejar de seguir
+async function resolveProfile(): Promise<{ id: string; isNew: boolean }> {
+  const existing = await getProfileId()
+  if (existing) return { id: existing, isNew: false }
+  return { id: await createProfile(), isNew: true }
+}
+
+function withCookie(res: NextResponse, id: string, isNew: boolean) {
+  if (isNew) res.cookies.set(PROFILE_COOKIE, id, cookieOptions)
+  return res
+}
+
+// GET — categorías curadas + temas propios del perfil, con estado de seguimiento.
+export async function GET() {
+  const { id, isNew } = await resolveProfile()
+  const { rows } = await query(
+    `SELECT t.slug, t.label, t.kind, t.lang,
+            (pt.profile_id IS NOT NULL) AS followed,
+            count(at.article_id) AS article_count
+     FROM topics t
+     LEFT JOIN profile_topics pt ON pt.topic_id = t.id AND pt.profile_id = $1
+     LEFT JOIN article_topics at ON at.topic_id = t.id
+     WHERE t.kind = 'curated' OR t.owner_profile_id = $1
+     GROUP BY t.id, pt.profile_id
+     ORDER BY t.kind, t.label`,
+    [id],
+  )
+  return withCookie(NextResponse.json({ topics: rows }), id, isNew)
+}
+
+// POST — crea un tema propio. { label, keywords: string[] }
+export async function POST(req: Request) {
+  const { id, isNew } = await resolveProfile()
+  const body = (await req.json()) as { label?: string; keywords?: string[] }
+  const label = (body.label ?? '').trim()
+  const keywords = (body.keywords ?? []).map((k) => k.trim().toLowerCase()).filter(Boolean)
+  if (!label || keywords.length === 0) {
+    return withCookie(
+      NextResponse.json({ error: 'label y keywords requeridos' }, { status: 400 }),
+      id,
+      isNew,
+    )
+  }
+  const slug = slugify(label) || `tema-${Date.now()}`
+  const ins = await query<{ id: number }>(
+    `INSERT INTO topics (slug, label, kind, lang, keywords, owner_profile_id)
+     VALUES ($1,$2,'custom','es',$3,$4)
+     ON CONFLICT DO NOTHING
+     RETURNING id`,
+    [slug, label, keywords, id],
+  )
+  if (ins.rows.length > 0) {
+    await query(`INSERT INTO profile_topics (profile_id, topic_id) VALUES ($1,$2)`, [
+      id,
+      ins.rows[0].id,
+    ])
+  }
+  return withCookie(NextResponse.json({ ok: true, slug }), id, isNew)
+}
+
+// PATCH — seguir / dejar de seguir. { slug, followed }
 export async function PATCH(req: Request) {
+  const { id, isNew } = await resolveProfile()
   const body = (await req.json()) as { slug?: string; followed?: boolean }
   if (!body.slug || typeof body.followed !== 'boolean') {
-    return NextResponse.json({ error: 'slug y followed requeridos' }, { status: 400 })
+    return withCookie(NextResponse.json({ error: 'slug y followed' }, { status: 400 }), id, isNew)
   }
-  await query(`UPDATE topics SET followed = $2 WHERE slug = $1`, [body.slug, body.followed])
-  return NextResponse.json({ ok: true })
+  const { rows } = await query<{ id: number }>(
+    `SELECT id FROM topics WHERE slug = $1 AND (kind = 'curated' OR owner_profile_id = $2)`,
+    [body.slug, id],
+  )
+  if (rows.length === 0) {
+    return withCookie(NextResponse.json({ error: 'tema no encontrado' }, { status: 404 }), id, isNew)
+  }
+  if (body.followed) {
+    await query(
+      `INSERT INTO profile_topics (profile_id, topic_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+      [id, rows[0].id],
+    )
+  } else {
+    await query(`DELETE FROM profile_topics WHERE profile_id = $1 AND topic_id = $2`, [
+      id,
+      rows[0].id,
+    ])
+  }
+  return withCookie(NextResponse.json({ ok: true }), id, isNew)
+}
+
+// DELETE — borra un tema propio. { slug }
+export async function DELETE(req: Request) {
+  const { id, isNew } = await resolveProfile()
+  const body = (await req.json()) as { slug?: string }
+  if (!body.slug) {
+    return withCookie(NextResponse.json({ error: 'slug requerido' }, { status: 400 }), id, isNew)
+  }
+  await query(`DELETE FROM topics WHERE slug = $1 AND kind = 'custom' AND owner_profile_id = $2`, [
+    body.slug,
+    id,
+  ])
+  return withCookie(NextResponse.json({ ok: true }), id, isNew)
 }

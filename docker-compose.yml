@@ -5,7 +5,7 @@
 
 services:
   postgres:
-    image: postgres:17
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: newshub
       POSTGRES_PASSWORD: newshub_dev
@@ -19,6 +19,19 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  embed:
+    build: ./services/embed
+    environment:
+      PORT: 8089
+    ports:
+      - "8089:8089"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8089/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
 
 volumes:
   pgdata:

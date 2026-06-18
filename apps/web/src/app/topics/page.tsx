@@ -1,16 +1,26 @@
 'use client'
 
+import { Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import ShinyText from '@/components/ShinyText'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useI18n } from '@/lib/i18n'
 
-type Topic = { slug: string; label: string; followed: boolean; article_count: number }
+type Topic = {
+  slug: string
+  label: string
+  kind: 'curated' | 'custom'
+  followed: boolean
+  article_count: number
+}
 
 export default function TopicsPage() {
   const { t } = useI18n()
   const [topics, setTopics] = useState<Topic[]>([])
+  const [name, setName] = useState('')
+  const [keywords, setKeywords] = useState('')
+  const [busy, setBusy] = useState(false)
 
   const load = () =>
     fetch('/api/topics')
@@ -30,30 +40,125 @@ export default function TopicsPage() {
     })
   }
 
+  const create = async () => {
+    const kws = keywords
+      .split(',')
+      .map((k) => k.trim())
+      .filter(Boolean)
+    if (!name.trim() || kws.length === 0) return
+    setBusy(true)
+    await fetch('/api/topics', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ label: name.trim(), keywords: kws }),
+    })
+    setName('')
+    setKeywords('')
+    setBusy(false)
+    load()
+  }
+
+  const remove = async (slug: string) => {
+    setTopics((ts) => ts.filter((x) => x.slug !== slug))
+    await fetch('/api/topics', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slug }),
+    })
+  }
+
+  const curated = topics.filter((x) => x.kind === 'curated')
+  const custom = topics.filter((x) => x.kind === 'custom')
+
   return (
     <div className="mx-auto max-w-3xl px-6 py-10">
       <h1 className="mb-8 text-2xl font-semibold tracking-tight">
         <ShinyText text={t('topics.title')} />
       </h1>
-      <div className="flex flex-col gap-3">
-        {topics.map((tp) => (
-          <div
-            key={tp.slug}
-            className="flex items-center justify-between rounded-2xl border border-border bg-card p-4"
-          >
-            <div>
-              <p className="font-medium">#{tp.label}</p>
-              <Badge className="mt-1">{tp.article_count} artículos</Badge>
-            </div>
-            <Button
-              variant={tp.followed ? 'secondary' : 'default'}
-              size="sm"
-              onClick={() => toggle(tp.slug, !tp.followed)}
-            >
-              {tp.followed ? t('topics.following') : t('topics.follow')}
-            </Button>
+
+      {/* Crear tema propio */}
+      <section className="mb-10 rounded-2xl border border-border bg-card p-5">
+        <h2 className="mb-3 text-sm font-semibold text-accent">{t('topics.create')}</h2>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t('topics.name')}
+            className="h-10 flex-1 rounded-full border border-input bg-background px-4 text-sm outline-none focus:border-accent"
+          />
+          <input
+            value={keywords}
+            onChange={(e) => setKeywords(e.target.value)}
+            placeholder={t('topics.keywords')}
+            className="h-10 flex-[2] rounded-full border border-input bg-background px-4 text-sm outline-none focus:border-accent"
+          />
+          <Button onClick={create} disabled={busy}>
+            <Plus className="h-4 w-4" />
+            {t('topics.add')}
+          </Button>
+        </div>
+      </section>
+
+      {/* Tus temas */}
+      <section className="mb-10">
+        <h2 className="mb-3 text-sm font-semibold text-muted-foreground">{t('topics.custom')}</h2>
+        {custom.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            {t('topics.customEmpty')}
+          </p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {custom.map((tp) => (
+              <TopicRow key={tp.slug} tp={tp} onToggle={toggle} onRemove={remove} />
+            ))}
           </div>
-        ))}
+        )}
+      </section>
+
+      {/* Categorías curadas */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-muted-foreground">{t('topics.curated')}</h2>
+        <div className="flex flex-col gap-3">
+          {curated.map((tp) => (
+            <TopicRow key={tp.slug} tp={tp} onToggle={toggle} />
+          ))}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function TopicRow({
+  tp,
+  onToggle,
+  onRemove,
+}: {
+  tp: Topic
+  onToggle: (slug: string, followed: boolean) => void
+  onRemove?: (slug: string) => void
+}) {
+  const { t } = useI18n()
+  return (
+    <div className="flex items-center justify-between rounded-2xl border border-border bg-card p-4">
+      <div>
+        <p className="font-medium">#{tp.label}</p>
+        <Badge className="mt-1">
+          {tp.article_count} {t('trends.articles')}
+        </Badge>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          variant={tp.followed ? 'secondary' : 'default'}
+          size="sm"
+          onClick={() => onToggle(tp.slug, !tp.followed)}
+        >
+          {tp.followed ? t('topics.following') : t('topics.follow')}
+        </Button>
+        {onRemove && (
+          <Button variant="ghost" size="icon" onClick={() => onRemove(tp.slug)} title={t('topics.delete')}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
       </div>
     </div>
   )
