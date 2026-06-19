@@ -14,8 +14,16 @@ export async function GET() {
     `SELECT t.slug FROM profile_topics pt JOIN topics t ON t.id = pt.topic_id WHERE pt.profile_id = $1`,
     [id],
   )
+  const { rows: pk } = await query<{ has: boolean }>(
+    `SELECT (gnews_key IS NOT NULL) AS has FROM profiles WHERE id = $1`,
+    [id],
+  )
 
-  const res = NextResponse.json({ id, followed: rows.map((r) => r.slug) })
+  const res = NextResponse.json({
+    id,
+    followed: rows.map((r) => r.slug),
+    hasGnewsKey: pk[0]?.has ?? false,
+  })
   res.cookies.set(PROFILE_COOKIE, id, cookieOptions)
   return res
 }

@@ -3,7 +3,8 @@ import type { Connector, RawArticle } from './types'
 // Conector News API (NewsAPI.org por defecto; GNews soportable vía config).
 // Requiere NEWSAPI_KEY. La query va en source.config.query.
 export const newsapiConnector: Connector = async (source) => {
-  const key = process.env.NEWSAPI_KEY
+  // Clave por config (BYOK) con fallback a la de la app.
+  const key = (source.config.apiKey as string) || process.env.NEWSAPI_KEY
   if (!key) return []
 
   const provider = process.env.NEWSAPI_PROVIDER || 'newsapi'

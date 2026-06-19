@@ -75,6 +75,7 @@ export type IngestResult = {
   clusters_touched: number
   notifications: number
   errors: { source: string; error: string }[]
+  cached?: boolean // true si la búsqueda se sirvió de caché (sin llamada externa)
 }
 
 // Artículo recién insertado que pasa por el pipeline.
@@ -229,10 +230,31 @@ export async function processArticles(
 }
 
 // Búsqueda activa de contenidos por keywords usando el conector News API (GNews).
-// Devuelve los contadores del proceso. Si no hay NEWSAPI_KEY, no hace nada.
-export async function searchNews(queryStr: string, lang: string): Promise<IngestResult> {
+// Caché compartida por (provider, lang, query) durante 6h: si ya se consultó hace
+// poco, no se vuelve a llamar a la API (ahorra cuota). `opts.apiKey` permite usar
+// la clave propia del usuario (BYOK).
+export async function searchNews(
+  queryStr: string,
+  lang: string,
+  opts: { apiKey?: string } = {},
+): Promise<IngestResult> {
   const result = emptyResult()
-  if (!process.env.NEWSAPI_KEY || !queryStr.trim()) return result
+  const q = queryStr.trim()
+  const key = opts.apiKey || process.env.NEWSAPI_KEY
+  if (!q || !key) return result
+
+  const provider = process.env.NEWSAPI_PROVIDER || 'gnews'
+  const norm = q.toLowerCase().slice(0, 300)
+
+  const cached = await query(
+    `SELECT 1 FROM search_cache
+     WHERE provider = $1 AND lang = $2 AND query_norm = $3 AND fetched_at > now() - interval '6 hours'`,
+    [provider, lang, norm],
+  )
+  if (cached.rowCount && cached.rowCount > 0) {
+    result.cached = true
+    return result // ya consultado hace poco; los artículos están en BD
+  }
 
   const src = await query<{ id: number }>(
     `INSERT INTO sources (kind, name, url, lang, active)
@@ -248,13 +270,19 @@ export async function searchNews(queryStr: string, lang: string): Promise<Ingest
     name: 'GNews (búsqueda)',
     url: 'https://gnews.io/api/v4/search',
     lang,
-    config: { query: queryStr },
+    config: { query: q, apiKey: key },
   }
   const articles = await connectors.newsapi(adhoc)
   result.sources = 1
   result.fetched = articles.length
   const topics = await loadTopics()
   await processArticles(sourceId, articles, topics, result, false)
+
+  await query(
+    `INSERT INTO search_cache (provider, lang, query_norm) VALUES ($1,$2,$3)
+     ON CONFLICT (provider, lang, query_norm) DO UPDATE SET fetched_at = now()`,
+    [provider, lang, norm],
+  )
   return result
 }
 

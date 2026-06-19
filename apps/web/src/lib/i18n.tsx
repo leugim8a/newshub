@@ -48,6 +48,13 @@ const dict = {
     'time.hours': 'h',
     'time.days': 'd',
     'lang.label': 'Idioma',
+    'settings.gnews': 'Tu clave GNews (opcional)',
+    'settings.gnewsDesc': 'Usa tu propia cuota de búsqueda. Se guarda cifrada y nunca se muestra.',
+    'settings.gnewsPlaceholder': 'Pega tu API key de gnews.io',
+    'settings.gnewsActive': 'Usando tu clave',
+    'settings.getKey': '¿No tienes? Consíguela gratis en gnews.io',
+    'settings.save': 'Guardar',
+    'settings.clear': 'Quitar',
   },
   en: {
     'app.name': 'NewsHub',
@@ -90,6 +97,13 @@ const dict = {
     'time.hours': 'h',
     'time.days': 'd',
     'lang.label': 'Language',
+    'settings.gnews': 'Your GNews key (optional)',
+    'settings.gnewsDesc': 'Use your own search quota. Stored encrypted, never shown.',
+    'settings.gnewsPlaceholder': 'Paste your gnews.io API key',
+    'settings.gnewsActive': 'Using your key',
+    'settings.getKey': "Don't have one? Get it free at gnews.io",
+    'settings.save': 'Save',
+    'settings.clear': 'Remove',
   },
 } as const
 
