@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { backfillTopic } from '@/lib/backfill'
 import { embedTexts, toVector } from '@/lib/embed'
 import { searchNews } from '@/ingest'
 import { PROFILE_COOKIE, cookieOptions, createProfile, getProfileId } from '@/lib/profile'
@@ -67,25 +66,27 @@ export async function POST(req: Request) {
 
   // 2) Filtro semántico: enlazar al tema solo los resultados de búsqueda
   //    realmente cercanos (rechaza homónimos como "STS" Ship-to-Ship).
+  const ids = search.articleIds ?? []
   const topicVecs = await embedTexts([`${topic.label}. ${topic.keywords.join(', ')}`], 'query')
   let relevant: number | null = null
-  if (topicVecs?.[0]) {
+
+  // Reconstruir desde cero los enlaces del tema con artículos de búsqueda.
+  await query(
+    `DELETE FROM article_topics at USING articles a, sources s
+     WHERE at.topic_id = $1 AND at.article_id = a.id AND a.source_id = s.id
+       AND s.url = $2`,
+    [topic.id, SEARCH_SOURCE_URL],
+  )
+
+  if (topicVecs?.[0] && ids.length > 0) {
     const tv = toVector(topicVecs[0])
-    // Similitud de cada resultado de búsqueda reciente con el vector del tema.
+    // Similitud SOLO de los resultados de ESTA búsqueda con el vector del tema.
     const cand = await query<{ id: number; sim: number }>(
       `SELECT a.id, 1 - (a.embedding <=> $1::vector) AS sim
-       FROM articles a JOIN sources s ON s.id = a.source_id
-       WHERE s.url = $2 AND a.ingested_at > now() - interval '6 hours'
-         AND a.embedding IS NOT NULL
+       FROM articles a
+       WHERE a.id = ANY($2::bigint[]) AND a.embedding IS NOT NULL
        ORDER BY sim DESC`,
-      [tv, SEARCH_SOURCE_URL],
-    )
-    // Reconstruir desde cero los enlaces del tema con artículos de búsqueda.
-    await query(
-      `DELETE FROM article_topics at USING articles a, sources s
-       WHERE at.topic_id = $1 AND at.article_id = a.id AND a.source_id = s.id
-         AND s.url = $2`,
-      [topic.id, SEARCH_SOURCE_URL],
+      [tv, ids],
     )
     const keep: number[] = []
     if (cand.rows.length > 0) {
@@ -101,9 +102,14 @@ export async function POST(req: Request) {
       }
     }
     relevant = keep.length
-  } else {
-    // Sin embeddings: caer al enlace por keywords (menos preciso).
-    await backfillTopic(topic.id, topic.keywords, 30)
+  } else if (ids.length > 0) {
+    // Sin embeddings: enlazar todos los resultados de esta búsqueda.
+    await query(
+      `INSERT INTO article_topics (article_id, topic_id)
+       SELECT unnest($1::bigint[]), $2 ON CONFLICT DO NOTHING`,
+      [ids, topic.id],
+    )
+    relevant = ids.length
   }
 
   const { rows: cnt } = await query<{ total: number }>(

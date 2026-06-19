@@ -78,6 +78,7 @@ export type IngestResult = {
   notifications: number
   errors: { source: string; error: string }[]
   cached?: boolean // true si la búsqueda se sirvió de caché (sin llamada externa)
+  articleIds?: number[] // IDs de artículos resueltos por esta búsqueda
 }
 
 // Artículo recién insertado que pasa por el pipeline.
@@ -266,17 +267,19 @@ export async function searchNews(queryStr: string, lang: string): Promise<Ingest
   const provider = 'search'
   const norm = q.toLowerCase().slice(0, 300)
 
-  const cached = await query(
-    `SELECT 1 FROM search_cache
+  const cached = await query<{ article_ids: number[] }>(
+    `SELECT article_ids FROM search_cache
      WHERE provider = $1 AND lang = $2 AND query_norm = $3 AND fetched_at > now() - interval '6 hours'`,
     [provider, lang, norm],
   )
   if (cached.rowCount && cached.rowCount > 0) {
     result.cached = true
-    return result // consultado hace poco; los artículos ya están en BD
+    result.articleIds = cached.rows[0].article_ids ?? []
+    return result // consultado hace poco; reutilizamos los IDs ya resueltos
   }
 
   const topics = await loadTopics()
+  let articleIds: number[] = []
   try {
     const articles = await googleNewsSearch(q, lang)
     if (articles.length > 0) {
@@ -288,12 +291,20 @@ export async function searchNews(queryStr: string, lang: string): Promise<Ingest
       )
       result.fetched += articles.length
       await processArticles(sid, articles, topics, result, false)
+      // Resolver los IDs de los artículos de ESTA búsqueda (nuevos o ya existentes).
+      const urls = articles.map((a) => canonicalUrl(a.url))
+      const idRows = await query<{ id: number }>(
+        `SELECT id FROM articles WHERE url_canonical = ANY($1::text[])`,
+        [urls],
+      )
+      articleIds = idRows.rows.map((r) => r.id)
     }
   } catch (err) {
     result.errors.push({ source: 'google-news', error: (err as Error).message })
   }
 
   result.sources = 1
+  result.articleIds = articleIds
   try {
     await enrichRecentImages(20)
   } catch {
@@ -301,9 +312,9 @@ export async function searchNews(queryStr: string, lang: string): Promise<Ingest
   }
 
   await query(
-    `INSERT INTO search_cache (provider, lang, query_norm) VALUES ($1,$2,$3)
-     ON CONFLICT (provider, lang, query_norm) DO UPDATE SET fetched_at = now()`,
-    [provider, lang, norm],
+    `INSERT INTO search_cache (provider, lang, query_norm, article_ids) VALUES ($1,$2,$3,$4)
+     ON CONFLICT (provider, lang, query_norm) DO UPDATE SET fetched_at = now(), article_ids = $4`,
+    [provider, lang, norm, articleIds],
   )
   return result
 }
