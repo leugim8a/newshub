@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ArticleCard, type Article } from '@/components/ArticleCard'
 import { NotificationBell } from '@/components/NotificationBell'
 import ShinyText from '@/components/ShinyText'
+import { pushToast } from '@/components/Toaster'
 import { useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils/cn'
 
@@ -41,6 +42,29 @@ export function FeedClient() {
     es.onmessage = () => loadFeed(active)
     return () => es.close()
   }, [active, loadFeed])
+
+  const discard = async (id: number) => {
+    setArticles((arts) => arts.filter((a) => a.id !== id))
+    await fetch('/api/feed/discard', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ articleId: id }),
+    })
+    pushToast({
+      title: t('feed.discarded'),
+      action: {
+        label: t('common.undo'),
+        run: async () => {
+          await fetch('/api/feed/discard', {
+            method: 'DELETE',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ articleId: id }),
+          })
+          loadFeed(active)
+        },
+      },
+    })
+  }
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-10">
@@ -87,7 +111,7 @@ export function FeedClient() {
       ) : (
         <div className="flex flex-col gap-3">
           {articles.map((a) => (
-            <ArticleCard key={a.id} article={a} />
+            <ArticleCard key={a.id} article={a} onDiscard={discard} />
           ))}
         </div>
       )}

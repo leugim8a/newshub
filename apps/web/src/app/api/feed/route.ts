@@ -6,36 +6,44 @@ export const dynamic = 'force-dynamic'
 
 // GET /api/feed
 //   ?topic=ia     → un tema concreto
-//   ?all=1        → todo el flujo (sin filtrar)
+//   ?all=1        → todo el flujo (sin filtrar por temas)
 //   (por defecto) → temas que sigue el perfil
+// En todos los casos se ocultan las noticias descartadas por el perfil.
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const topic = searchParams.get('topic')
   const all = searchParams.get('all') === '1'
   const limit = Math.min(Number(searchParams.get('limit')) || 50, 100)
+  const profileId = await getProfileId()
 
   const params: unknown[] = []
-  let where = ''
+  const conds: string[] = []
 
   if (topic) {
     params.push(topic)
-    where = `WHERE a.id IN (
+    conds.push(`a.id IN (
       SELECT at.article_id FROM article_topics at
-      JOIN topics t ON t.id = at.topic_id WHERE t.slug = $1
-    )`
-  } else if (!all) {
-    const profileId = await getProfileId()
-    if (profileId) {
-      params.push(profileId)
-      where = `WHERE a.id IN (
-        SELECT at.article_id FROM article_topics at
-        JOIN profile_topics pt ON pt.topic_id = at.topic_id
-        WHERE pt.profile_id = $1
-      )`
-    }
+      JOIN topics t ON t.id = at.topic_id WHERE t.slug = $${params.length}
+    )`)
+  } else if (!all && profileId) {
+    params.push(profileId)
+    conds.push(`a.id IN (
+      SELECT at.article_id FROM article_topics at
+      JOIN profile_topics pt ON pt.topic_id = at.topic_id
+      WHERE pt.profile_id = $${params.length}
+    )`)
   }
 
+  if (profileId) {
+    params.push(profileId)
+    conds.push(
+      `a.id NOT IN (SELECT article_id FROM discarded_articles WHERE profile_id = $${params.length})`,
+    )
+  }
+
+  const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : ''
   params.push(limit)
+
   const { rows } = await query(
     `SELECT a.id, a.url, a.title, a.summary, a.image_url, a.lang, a.cluster_id,
             COALESCE(a.published_at, a.ingested_at) AS published_at,

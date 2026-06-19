@@ -1,6 +1,6 @@
 'use client'
 
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { relativeTime, useI18n } from '@/lib/i18n'
 
@@ -16,8 +16,14 @@ export type Article = {
   topics: string[]
 }
 
-export function ArticleCard({ article }: { article: Article }) {
-  const { lang } = useI18n()
+export function ArticleCard({
+  article,
+  onDiscard,
+}: {
+  article: Article
+  onDiscard?: (id: number) => void
+}) {
+  const { t, lang } = useI18n()
   const hasImage = Boolean(article.image_url)
 
   return (
@@ -25,8 +31,23 @@ export function ArticleCard({ article }: { article: Article }) {
       href={article.url}
       target="_blank"
       rel="noreferrer"
-      className="group block animate-fade-in overflow-hidden rounded-2xl border border-border bg-card transition-colors hover:border-accent/40"
+      className="group relative block animate-fade-in overflow-hidden rounded-2xl border border-border bg-card transition-colors hover:border-accent/40"
     >
+      {onDiscard && (
+        <button
+          type="button"
+          title={t('feed.discard')}
+          aria-label={t('feed.discard')}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onDiscard(article.id)
+          }}
+          className="absolute right-2 top-2 z-20 flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/70 group-hover:opacity-100"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
       {hasImage && (
         <div className="relative h-44 w-full overflow-hidden sm:h-52">
           {/* eslint-disable-next-line @next/next/no-img-element */}

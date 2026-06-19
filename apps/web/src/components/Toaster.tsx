@@ -4,7 +4,13 @@
 import { useSyncExternalStore } from 'react'
 import { Radio, X } from 'lucide-react'
 
-type Toast = { id: number; title: string; body?: string; url?: string }
+type Toast = {
+  id: number
+  title: string
+  body?: string
+  url?: string
+  action?: { label: string; run: () => void }
+}
 
 let toasts: Toast[] = []
 let nextId = 1
@@ -60,6 +66,19 @@ export function Toaster() {
                 <p className="mb-0.5 text-xs font-medium uppercase tracking-wide text-accent">{t.body}</p>
               )}
               <p className="line-clamp-2 text-sm text-card-foreground">{t.title}</p>
+              {t.action && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    t.action?.run()
+                    dismiss(t.id)
+                  }}
+                  className="mt-1.5 text-xs font-semibold text-accent hover:underline"
+                >
+                  {t.action.label}
+                </button>
+              )}
             </div>
             <button
               type="button"
