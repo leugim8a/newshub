@@ -9,7 +9,11 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 const SEARCH_LIMIT_PER_HOUR = 30
-const RELEVANCE_THRESHOLD = 0.86 // sim coseno query(tema)↔passage(artículo); calibrado
+// Corte de relevancia ADAPTATIVO: se queda con el grupo de mejores resultados
+// (dentro de REL_MARGIN del mejor) y nunca por debajo de REL_FLOOR. Evita tanto
+// los falsos positivos (outliers lejos del mejor) como dejar el tema vacío.
+const REL_FLOOR = 0.78
+const REL_MARGIN = 0.05
 const SEARCH_SOURCE_URL = 'https://news.google.com/rss/search'
 
 // Query focal para Google News: nombre del tema + frases (entre comillas) y
@@ -63,10 +67,19 @@ export async function POST(req: Request) {
 
   // 2) Filtro semántico: enlazar al tema solo los resultados de búsqueda
   //    realmente cercanos (rechaza homónimos como "STS" Ship-to-Ship).
-  const topicVecs = await embedTexts([`${topic.label}: ${topic.keywords.join(', ')}`], 'query')
+  const topicVecs = await embedTexts([`${topic.label}. ${topic.keywords.join(', ')}`], 'query')
   let relevant: number | null = null
   if (topicVecs?.[0]) {
     const tv = toVector(topicVecs[0])
+    // Similitud de cada resultado de búsqueda reciente con el vector del tema.
+    const cand = await query<{ id: number; sim: number }>(
+      `SELECT a.id, 1 - (a.embedding <=> $1::vector) AS sim
+       FROM articles a JOIN sources s ON s.id = a.source_id
+       WHERE s.url = $2 AND a.ingested_at > now() - interval '6 hours'
+         AND a.embedding IS NOT NULL
+       ORDER BY sim DESC`,
+      [tv, SEARCH_SOURCE_URL],
+    )
     // Reconstruir desde cero los enlaces del tema con artículos de búsqueda.
     await query(
       `DELETE FROM article_topics at USING articles a, sources s
@@ -74,16 +87,20 @@ export async function POST(req: Request) {
          AND s.url = $2`,
       [topic.id, SEARCH_SOURCE_URL],
     )
-    const ins = await query(
-      `INSERT INTO article_topics (article_id, topic_id)
-       SELECT a.id, $1 FROM articles a JOIN sources s ON s.id = a.source_id
-       WHERE s.url = $2 AND a.ingested_at > now() - interval '6 hours'
-         AND a.embedding IS NOT NULL
-         AND 1 - (a.embedding <=> $3::vector) >= $4
-       ON CONFLICT DO NOTHING`,
-      [topic.id, SEARCH_SOURCE_URL, tv, RELEVANCE_THRESHOLD],
-    )
-    relevant = ins.rowCount ?? 0
+    const keep: number[] = []
+    if (cand.rows.length > 0) {
+      const best = Number(cand.rows[0].sim)
+      const cutoff = Math.max(REL_FLOOR, best - REL_MARGIN)
+      for (const r of cand.rows) if (Number(r.sim) >= cutoff) keep.push(r.id)
+      if (keep.length > 0) {
+        await query(
+          `INSERT INTO article_topics (article_id, topic_id)
+           SELECT unnest($1::bigint[]), $2 ON CONFLICT DO NOTHING`,
+          [keep, topic.id],
+        )
+      }
+    }
+    relevant = keep.length
   } else {
     // Sin embeddings: caer al enlace por keywords (menos preciso).
     await backfillTopic(topic.id, topic.keywords, 30)
