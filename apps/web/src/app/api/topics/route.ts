@@ -64,13 +64,42 @@ export async function POST(req: Request) {
      RETURNING id`,
     [slug, label, keywords, id],
   )
+  let matched = 0
   if (ins.rows.length > 0) {
     await query(`INSERT INTO profile_topics (profile_id, topic_id) VALUES ($1,$2)`, [
       id,
       ins.rows[0].id,
     ])
+    // Backfill: enlazar el tema nuevo con artículos ya ingeridos (últimos 14 días)
+    // para que el feed no aparezca vacío. El match de la ingesta solo corre hacia delante.
+    matched = await backfillTopic(ins.rows[0].id, keywords)
   }
-  return withCookie(NextResponse.json({ ok: true, slug }), id, isNew)
+  return withCookie(NextResponse.json({ ok: true, slug, matched }), id, isNew)
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Enlaza un tema con los artículos recientes que casan sus keywords (palabra
+// completa para una sola palabra; subcadena para frases). Devuelve nº de matches.
+async function backfillTopic(topicId: number, keywords: string[]): Promise<number> {
+  const conds: string[] = []
+  const params: unknown[] = [topicId]
+  for (const k of keywords) {
+    params.push(k.includes(' ') ? `%${k}%` : `\\y${escapeRegex(k)}\\y`)
+    const op = k.includes(' ') ? 'ILIKE' : '~*'
+    conds.push(`(a.title || ' ' || coalesce(a.summary,'')) ${op} $${params.length}`)
+  }
+  if (conds.length === 0) return 0
+  const res = await query(
+    `INSERT INTO article_topics (article_id, topic_id)
+     SELECT a.id, $1 FROM articles a
+     WHERE a.ingested_at > now() - interval '14 days' AND (${conds.join(' OR ')})
+     ON CONFLICT DO NOTHING`,
+    params,
+  )
+  return res.rowCount ?? 0
 }
 
 // PATCH — seguir / dejar de seguir. { slug, followed }
