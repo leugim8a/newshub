@@ -103,101 +103,158 @@ export async function runIngest(): Promise<IngestResult> {
   const { rows: sources } = await query<SourceRow>(
     `SELECT id, kind, name, url, lang, config FROM sources WHERE active = true`,
   )
-  const { rows: topics } = await query<TopicRow>(
-    `SELECT id, slug, label, keywords, kind, owner_profile_id FROM topics`,
-  )
+  const topics = await loadTopics()
   result.sources = sources.length
 
   for (const source of sources) {
     try {
       const articles = await connectors[source.kind](source)
       result.fetched += articles.length
-
-      // 1) Insertar artículos nuevos (deduplicados)
-      const fresh: NewArticle[] = []
-      for (const a of articles) {
-        const ins = await query<{ id: number }>(
-          `INSERT INTO articles (source_id, url, url_canonical, title, title_hash, summary, image_url, lang, published_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-           ON CONFLICT DO NOTHING
-           RETURNING id`,
-          [
-            source.id,
-            a.url,
-            canonicalUrl(a.url),
-            a.title,
-            titleHash(a.title),
-            a.summary ?? null,
-            a.imageUrl ?? null,
-            a.lang,
-            a.publishedAt ?? null,
-          ],
-        )
-        if (ins.rows.length === 0) continue
-        result.inserted++
-        fresh.push({
-          id: ins.rows[0].id,
-          title: a.title,
-          summary: a.summary ?? null,
-          url: a.url,
-          lang: a.lang,
-          matches: matchTopics(a, topics),
-        })
-      }
-
-      // 2) Embeddings en lote (best-effort)
-      if (embedEnabled() && fresh.length > 0) {
-        for (let i = 0; i < fresh.length; i += 32) {
-          const batch = fresh.slice(i, i + 32)
-          const vecs = await embedTexts(batch.map((b) => `${b.title}. ${b.summary ?? ''}`))
-          if (!vecs) break
-          for (let j = 0; j < batch.length; j++) {
-            const emb = vecs[j]
-            if (!emb) continue
-            batch[j].embedding = emb
-            await query(`UPDATE articles SET embedding = $1::vector WHERE id = $2`, [
-              toVector(emb),
-              batch[j].id,
-            ])
-            result.embedded++
-          }
-        }
-      }
-
-      // 3) Clustering + notificaciones
-      for (const art of fresh) {
-        if (art.embedding) {
-          art.clusterId = await assignCluster(art)
-          if (art.clusterId) {
-            await query(`UPDATE articles SET cluster_id = $1 WHERE id = $2`, [art.clusterId, art.id])
-            await refreshCluster(art.clusterId)
-            result.clusters_touched++
-          }
-        }
-        for (const topic of art.matches) {
-          await query(
-            `INSERT INTO article_topics (article_id, topic_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-            [art.id, topic.id],
-          )
-          await notifyProfiles(art, topic, result)
-        }
-        if (art.matches.length > 0) {
-          publish({
-            type: 'article',
-            title: art.title,
-            url: art.url,
-            topic: art.matches[0].slug,
-            at: new Date().toISOString(),
-          })
-        }
-      }
-
+      await processArticles(source.id, articles, topics, result, true)
       await query(`UPDATE sources SET last_fetch = NOW() WHERE id = $1`, [source.id])
     } catch (err) {
       result.errors.push({ source: source.name, error: (err as Error).message })
     }
   }
 
+  return result
+}
+
+export function emptyResult(): IngestResult {
+  return {
+    sources: 0,
+    fetched: 0,
+    inserted: 0,
+    embedded: 0,
+    clusters_touched: 0,
+    notifications: 0,
+    errors: [],
+  }
+}
+
+export async function loadTopics(): Promise<TopicRow[]> {
+  const { rows } = await query<TopicRow>(
+    `SELECT id, slug, label, keywords, kind, owner_profile_id FROM topics`,
+  )
+  return rows
+}
+
+// Pipeline por lote: insertar (dedup) → embeddings → clustering → match → notificar.
+// `notify=false` para búsquedas manuales (no queremos alertar de resultados pedidos).
+export async function processArticles(
+  sourceId: number,
+  articles: RawArticle[],
+  topics: TopicRow[],
+  result: IngestResult,
+  notify = true,
+): Promise<void> {
+  // 1) Insertar artículos nuevos (deduplicados)
+  const fresh: NewArticle[] = []
+  for (const a of articles) {
+    const ins = await query<{ id: number }>(
+      `INSERT INTO articles (source_id, url, url_canonical, title, title_hash, summary, image_url, lang, published_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT DO NOTHING
+       RETURNING id`,
+      [
+        sourceId,
+        a.url,
+        canonicalUrl(a.url),
+        a.title,
+        titleHash(a.title),
+        a.summary ?? null,
+        a.imageUrl ?? null,
+        a.lang,
+        a.publishedAt ?? null,
+      ],
+    )
+    if (ins.rows.length === 0) continue
+    result.inserted++
+    fresh.push({
+      id: ins.rows[0].id,
+      title: a.title,
+      summary: a.summary ?? null,
+      url: a.url,
+      lang: a.lang,
+      matches: matchTopics(a, topics),
+    })
+  }
+
+  // 2) Embeddings en lote (best-effort)
+  if (embedEnabled() && fresh.length > 0) {
+    for (let i = 0; i < fresh.length; i += 32) {
+      const batch = fresh.slice(i, i + 32)
+      const vecs = await embedTexts(batch.map((b) => `${b.title}. ${b.summary ?? ''}`))
+      if (!vecs) break
+      for (let j = 0; j < batch.length; j++) {
+        const emb = vecs[j]
+        if (!emb) continue
+        batch[j].embedding = emb
+        await query(`UPDATE articles SET embedding = $1::vector WHERE id = $2`, [
+          toVector(emb),
+          batch[j].id,
+        ])
+        result.embedded++
+      }
+    }
+  }
+
+  // 3) Clustering + match + (opcional) notificaciones
+  for (const art of fresh) {
+    if (art.embedding) {
+      art.clusterId = await assignCluster(art)
+      if (art.clusterId) {
+        await query(`UPDATE articles SET cluster_id = $1 WHERE id = $2`, [art.clusterId, art.id])
+        await refreshCluster(art.clusterId)
+        result.clusters_touched++
+      }
+    }
+    for (const topic of art.matches) {
+      await query(
+        `INSERT INTO article_topics (article_id, topic_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [art.id, topic.id],
+      )
+      if (notify) await notifyProfiles(art, topic, result)
+    }
+    if (notify && art.matches.length > 0) {
+      publish({
+        type: 'article',
+        title: art.title,
+        url: art.url,
+        topic: art.matches[0].slug,
+        at: new Date().toISOString(),
+      })
+    }
+  }
+}
+
+// Búsqueda activa de contenidos por keywords usando el conector News API (GNews).
+// Devuelve los contadores del proceso. Si no hay NEWSAPI_KEY, no hace nada.
+export async function searchNews(queryStr: string, lang: string): Promise<IngestResult> {
+  const result = emptyResult()
+  if (!process.env.NEWSAPI_KEY || !queryStr.trim()) return result
+
+  const src = await query<{ id: number }>(
+    `INSERT INTO sources (kind, name, url, lang, active)
+     VALUES ('newsapi', 'GNews (búsqueda)', 'https://gnews.io/api/v4/search', $1, false)
+     ON CONFLICT (kind, url) DO UPDATE SET lang = EXCLUDED.lang
+     RETURNING id`,
+    [lang],
+  )
+  const sourceId = src.rows[0].id
+  const adhoc: SourceRow = {
+    id: sourceId,
+    kind: 'newsapi',
+    name: 'GNews (búsqueda)',
+    url: 'https://gnews.io/api/v4/search',
+    lang,
+    config: { query: queryStr },
+  }
+  const articles = await connectors.newsapi(adhoc)
+  result.sources = 1
+  result.fetched = articles.length
+  const topics = await loadTopics()
+  await processArticles(sourceId, articles, topics, result, false)
   return result
 }
 

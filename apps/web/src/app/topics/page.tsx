@@ -1,10 +1,11 @@
 'use client'
 
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Search, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import ShinyText from '@/components/ShinyText'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { pushToast } from '@/components/Toaster'
 import { useI18n } from '@/lib/i18n'
 
 type Topic = {
@@ -109,7 +110,7 @@ export default function TopicsPage() {
         ) : (
           <div className="flex flex-col gap-3">
             {custom.map((tp) => (
-              <TopicRow key={tp.slug} tp={tp} onToggle={toggle} onRemove={remove} />
+              <TopicRow key={tp.slug} tp={tp} onToggle={toggle} onRemove={remove} onSearched={load} />
             ))}
           </div>
         )}
@@ -120,7 +121,7 @@ export default function TopicsPage() {
         <h2 className="mb-3 text-sm font-semibold text-muted-foreground">{t('topics.curated')}</h2>
         <div className="flex flex-col gap-3">
           {curated.map((tp) => (
-            <TopicRow key={tp.slug} tp={tp} onToggle={toggle} />
+            <TopicRow key={tp.slug} tp={tp} onToggle={toggle} onSearched={load} />
           ))}
         </div>
       </section>
@@ -132,12 +133,40 @@ function TopicRow({
   tp,
   onToggle,
   onRemove,
+  onSearched,
 }: {
   tp: Topic
   onToggle: (slug: string, followed: boolean) => void
   onRemove?: (slug: string) => void
+  onSearched?: () => void
 }) {
   const { t } = useI18n()
+  const [searching, setSearching] = useState(false)
+
+  const search = async () => {
+    setSearching(true)
+    try {
+      const res = await fetch('/api/topics/search', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slug: tp.slug }),
+      })
+      const d = (await res.json()) as { total: number; newArticles: number; provider: string }
+      pushToast({
+        title: `#${tp.label}: ${d.total} ${t('topics.searchResult')}`,
+        body:
+          d.provider === 'none'
+            ? t('topics.searchNoKey')
+            : `+${d.newArticles} ${t('topics.searchResult')}`,
+      })
+      onSearched?.()
+    } catch {
+      /* noop */
+    } finally {
+      setSearching(false)
+    }
+  }
+
   return (
     <div className="flex items-center justify-between rounded-2xl border border-border bg-card p-4">
       <div>
@@ -147,6 +176,18 @@ function TopicRow({
         </Badge>
       </div>
       <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={search}
+          disabled={searching}
+          title={t('topics.search')}
+        >
+          <Search className="h-4 w-4" />
+          <span className="hidden sm:inline">
+            {searching ? t('topics.searching') : t('topics.search')}
+          </span>
+        </Button>
         <Button
           variant={tp.followed ? 'secondary' : 'default'}
           size="sm"
