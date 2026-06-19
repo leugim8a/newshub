@@ -3,6 +3,8 @@ import { query } from '@/lib/db'
 import { embedTexts, embedEnabled, toVector } from '@/lib/embed'
 import { publish } from '@/lib/realtime'
 import { sendPush, type PushSub } from '@/lib/push'
+import { enrichRecentImages } from './enrich'
+import { googleNewsSearch } from './googlenews'
 import { newsapiConnector } from './newsapi'
 import { rssConnector } from './rss'
 import { scrapeConnector } from './scrape'
@@ -118,7 +120,31 @@ export async function runIngest(): Promise<IngestResult> {
     }
   }
 
+  // Enriquecer con imagen (og:image) los artículos recientes sin ella.
+  try {
+    await enrichRecentImages(40)
+  } catch {
+    /* best-effort */
+  }
+
   return result
+}
+
+// Crea/obtiene una fuente (inactiva) para atribuir artículos de búsqueda.
+async function ensureSource(
+  kind: 'rss' | 'newsapi',
+  name: string,
+  url: string,
+  lang: string,
+): Promise<number> {
+  const r = await query<{ id: number }>(
+    `INSERT INTO sources (kind, name, url, lang, active)
+     VALUES ($1,$2,$3,$4,false)
+     ON CONFLICT (kind, url) DO UPDATE SET lang = EXCLUDED.lang
+     RETURNING id`,
+    [kind, name, url, lang],
+  )
+  return r.rows[0].id
 }
 
 export function emptyResult(): IngestResult {
@@ -229,21 +255,15 @@ export async function processArticles(
   }
 }
 
-// Búsqueda activa de contenidos por keywords usando el conector News API (GNews).
-// Caché compartida por (provider, lang, query) durante 6h: si ya se consultó hace
-// poco, no se vuelve a llamar a la API (ahorra cuota). `opts.apiKey` permite usar
-// la clave propia del usuario (BYOK).
-export async function searchNews(
-  queryStr: string,
-  lang: string,
-  opts: { apiKey?: string } = {},
-): Promise<IngestResult> {
+// Búsqueda activa de contenidos por keywords vía Google News RSS — gratis, sin
+// clave y con amplia cobertura multilingüe. Caché compartida 6h por (lang, query)
+// para no martillear la fuente.
+export async function searchNews(queryStr: string, lang: string): Promise<IngestResult> {
   const result = emptyResult()
   const q = queryStr.trim()
-  const key = opts.apiKey || process.env.NEWSAPI_KEY
-  if (!q || !key) return result
+  if (!q) return result
 
-  const provider = process.env.NEWSAPI_PROVIDER || 'gnews'
+  const provider = 'search'
   const norm = q.toLowerCase().slice(0, 300)
 
   const cached = await query(
@@ -253,30 +273,32 @@ export async function searchNews(
   )
   if (cached.rowCount && cached.rowCount > 0) {
     result.cached = true
-    return result // ya consultado hace poco; los artículos están en BD
+    return result // consultado hace poco; los artículos ya están en BD
   }
 
-  const src = await query<{ id: number }>(
-    `INSERT INTO sources (kind, name, url, lang, active)
-     VALUES ('newsapi', 'GNews (búsqueda)', 'https://gnews.io/api/v4/search', $1, false)
-     ON CONFLICT (kind, url) DO UPDATE SET lang = EXCLUDED.lang
-     RETURNING id`,
-    [lang],
-  )
-  const sourceId = src.rows[0].id
-  const adhoc: SourceRow = {
-    id: sourceId,
-    kind: 'newsapi',
-    name: 'GNews (búsqueda)',
-    url: 'https://gnews.io/api/v4/search',
-    lang,
-    config: { query: q, apiKey: key },
-  }
-  const articles = await connectors.newsapi(adhoc)
-  result.sources = 1
-  result.fetched = articles.length
   const topics = await loadTopics()
-  await processArticles(sourceId, articles, topics, result, false)
+  try {
+    const articles = await googleNewsSearch(q, lang)
+    if (articles.length > 0) {
+      const sid = await ensureSource(
+        'rss',
+        'Google News (búsqueda)',
+        'https://news.google.com/rss/search',
+        lang,
+      )
+      result.fetched += articles.length
+      await processArticles(sid, articles, topics, result, false)
+    }
+  } catch (err) {
+    result.errors.push({ source: 'google-news', error: (err as Error).message })
+  }
+
+  result.sources = 1
+  try {
+    await enrichRecentImages(20)
+  } catch {
+    /* best-effort */
+  }
 
   await query(
     `INSERT INTO search_cache (provider, lang, query_norm) VALUES ($1,$2,$3)

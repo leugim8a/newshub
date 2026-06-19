@@ -30,7 +30,7 @@ export function ArticleCard({ article }: { article: Article }) {
         <img
           src={article.image_url}
           alt=""
-          className="hidden h-24 w-32 shrink-0 rounded-xl object-cover sm:block"
+          className="h-20 w-24 shrink-0 rounded-xl object-cover sm:h-24 sm:w-32"
           loading="lazy"
         />
       )}

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { backfillTopic } from '@/lib/backfill'
-import { decryptSecret } from '@/lib/crypto'
 import { searchNews } from '@/ingest'
 import { PROFILE_COOKIE, cookieOptions, createProfile, getProfileId } from '@/lib/profile'
 
@@ -49,21 +48,13 @@ export async function POST(req: Request) {
   if (rows.length === 0) return NextResponse.json({ error: 'tema no encontrado' }, { status: 404 })
   const topic = rows[0]
 
-  // Clave propia del usuario (BYOK), si la configuró.
-  const { rows: pk } = await query<{ gnews_key: string | null }>(
-    `SELECT gnews_key FROM profiles WHERE id = $1`,
-    [profileId],
-  )
-  const userKey = decryptSecret(pk[0]?.gnews_key ?? null) || undefined
-
+  // Consulta a Google News con las keywords (frases entre comillas), tope 8.
   const queryStr = topic.keywords
     .slice(0, 8)
     .map((k) => (k.includes(' ') ? `"${k}"` : k))
     .join(' OR ')
 
-  const hasKey = Boolean(userKey || process.env.NEWSAPI_KEY)
-  const provider = hasKey ? process.env.NEWSAPI_PROVIDER || 'gnews' : 'none'
-  const search = await searchNews(queryStr, topic.lang, { apiKey: userKey })
+  const search = await searchNews(queryStr, topic.lang)
   const linked = await backfillTopic(topic.id, topic.keywords, 30)
 
   const { rows: cnt } = await query<{ total: number }>(
@@ -72,8 +63,7 @@ export async function POST(req: Request) {
   )
 
   const res = NextResponse.json({
-    provider,
-    usedOwnKey: Boolean(userKey),
+    provider: 'search',
     cached: Boolean(search.cached),
     fetched: search.fetched,
     newArticles: search.inserted,

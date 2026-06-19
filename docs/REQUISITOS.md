@@ -38,7 +38,8 @@ enterarse antes que nadie de lo que le importa **sin** revisar 20 fuentes a mano
     "Real Madrid", "tipos BCE"). Cada perfil tiene sus temas.
 - **Ingesta multi-fuente** (conectores enchufables):
   - **RSS/Atom** — base del MVP (medios con feed: El País, El Mundo, BBC, The Guardian…).
-  - **News API** (**GNews**) — búsqueda por keyword/tema. _Conector con clave GNews._
+  - **Google News RSS Search** — búsqueda por keyword/tema (gratis, sin clave, amplia
+    cobertura multilingüe). Es el buscador del botón "Buscar contenidos".
   - **Scraping a medida** — para medios sin RSS. _Fase posterior, scaffold listo._
 - **Deduplicación** de la misma noticia entre fuentes (por URL canónica + hash de título).
 - **Notificaciones al instante con control de ruido**: Web Push (aunque la pestaña
@@ -148,7 +149,9 @@ Ver detalle en [`ARQUITECTURA.md`](./ARQUITECTURA.md).
 ### Resueltas (segunda ronda)
 - [x] **Embeddings**: **self-hosted** en el VPS — microservicio con `multilingual-e5-small`
       (**384 dimensiones**, ~120 MB, bajo RAM). Sin coste por uso ni salida de datos.
-- [x] **Proveedor News API**: **GNews** (free tier ~100 req/día, multi-idioma).
+- [x] **Buscador de contenidos**: **Google News RSS Search** (gratis, sin clave, gran cobertura).
+      Se descartó GNews API (free tier escaso) y el BYOK asociado. Caché 6h + rate-limit por perfil.
+- [x] **Imágenes**: se extrae `og:image` de cada artículo (no iframes — los medios los bloquean).
 
 ### Resueltas (tercera ronda)
 - [x] **Categorías curadas iniciales** (9): IA, Tecnología, Economía, Política, Internacional,
