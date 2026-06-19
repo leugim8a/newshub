@@ -272,10 +272,11 @@ export async function searchNews(queryStr: string, lang: string): Promise<Ingest
      WHERE provider = $1 AND lang = $2 AND query_norm = $3 AND fetched_at > now() - interval '6 hours'`,
     [provider, lang, norm],
   )
-  if (cached.rowCount && cached.rowCount > 0) {
+  // Solo se considera hit si hay IDs cacheados (ignora entradas antiguas vacías).
+  if (cached.rowCount && cached.rowCount > 0 && (cached.rows[0].article_ids?.length ?? 0) > 0) {
     result.cached = true
-    result.articleIds = cached.rows[0].article_ids ?? []
-    return result // consultado hace poco; reutilizamos los IDs ya resueltos
+    result.articleIds = cached.rows[0].article_ids
+    return result
   }
 
   const topics = await loadTopics()

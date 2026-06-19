@@ -1,6 +1,6 @@
 'use client'
 
-import { Plus, Search, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import ShinyText from '@/components/ShinyText'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ type Topic = {
   kind: 'curated' | 'custom'
   followed: boolean
   article_count: number
+  keywords?: string[]
 }
 
 export default function TopicsPage() {
@@ -110,7 +111,14 @@ export default function TopicsPage() {
         ) : (
           <div className="flex flex-col gap-3">
             {custom.map((tp) => (
-              <TopicRow key={tp.slug} tp={tp} onToggle={toggle} onRemove={remove} onSearched={load} />
+              <TopicRow
+                key={tp.slug}
+                tp={tp}
+                onToggle={toggle}
+                onRemove={remove}
+                onSearched={load}
+                onEdited={load}
+              />
             ))}
           </div>
         )}
@@ -134,14 +142,20 @@ function TopicRow({
   onToggle,
   onRemove,
   onSearched,
+  onEdited,
 }: {
   tp: Topic
   onToggle: (slug: string, followed: boolean) => void
   onRemove?: (slug: string) => void
   onSearched?: () => void
+  onEdited?: () => void
 }) {
   const { t } = useI18n()
   const [searching, setSearching] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editLabel, setEditLabel] = useState(tp.label)
+  const [editKeywords, setEditKeywords] = useState((tp.keywords ?? []).join(', '))
+  const [busy, setBusy] = useState(false)
 
   const search = async () => {
     setSearching(true)
@@ -151,13 +165,10 @@ function TopicRow({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ slug: tp.slug }),
       })
-      const d = (await res.json()) as { total: number; newArticles: number; provider: string }
+      const d = (await res.json()) as { total: number; relevant: number | null }
       pushToast({
         title: `#${tp.label}: ${d.total} ${t('topics.searchResult')}`,
-        body:
-          d.provider === 'none'
-            ? t('topics.searchNoKey')
-            : `+${d.newArticles} ${t('topics.searchResult')}`,
+        body: d.relevant != null ? `+${d.relevant} ${t('topics.searchResult')}` : undefined,
       })
       onSearched?.()
     } catch {
@@ -165,6 +176,50 @@ function TopicRow({
     } finally {
       setSearching(false)
     }
+  }
+
+  const saveEdit = async () => {
+    const kws = editKeywords
+      .split(',')
+      .map((k) => k.trim())
+      .filter(Boolean)
+    if (!editLabel.trim() || kws.length === 0) return
+    setBusy(true)
+    await fetch('/api/topics', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slug: tp.slug, label: editLabel.trim(), keywords: kws }),
+    })
+    setBusy(false)
+    setEditing(false)
+    onEdited?.()
+  }
+
+  if (editing) {
+    return (
+      <div className="rounded-2xl border border-accent/40 bg-card p-4">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            value={editLabel}
+            onChange={(e) => setEditLabel(e.target.value)}
+            placeholder={t('topics.name')}
+            className="h-10 flex-1 rounded-full border border-input bg-background px-4 text-sm outline-none focus:border-accent"
+          />
+          <input
+            value={editKeywords}
+            onChange={(e) => setEditKeywords(e.target.value)}
+            placeholder={t('topics.keywords')}
+            className="h-10 flex-[2] rounded-full border border-input bg-background px-4 text-sm outline-none focus:border-accent"
+          />
+          <Button onClick={saveEdit} disabled={busy}>
+            {t('topics.add')}
+          </Button>
+          <Button variant="ghost" onClick={() => setEditing(false)} disabled={busy}>
+            {t('common.undo')}
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -195,6 +250,11 @@ function TopicRow({
         >
           {tp.followed ? t('topics.following') : t('topics.follow')}
         </Button>
+        {onEdited && (
+          <Button variant="ghost" size="icon" onClick={() => setEditing(true)} title={t('topics.edit')}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+        )}
         {onRemove && (
           <Button variant="ghost" size="icon" onClick={() => onRemove(tp.slug)} title={t('topics.delete')}>
             <Trash2 className="h-4 w-4" />

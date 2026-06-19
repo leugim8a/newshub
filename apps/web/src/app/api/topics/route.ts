@@ -30,7 +30,7 @@ function withCookie(res: NextResponse, id: string, isNew: boolean) {
 export async function GET() {
   const { id, isNew } = await resolveProfile()
   const { rows } = await query(
-    `SELECT t.slug, t.label, t.kind, t.lang,
+    `SELECT t.slug, t.label, t.kind, t.lang, t.keywords,
             (pt.profile_id IS NOT NULL) AS followed,
             count(at.article_id) AS article_count
      FROM topics t
@@ -76,6 +76,41 @@ export async function POST(req: Request) {
     matched = await backfillTopic(ins.rows[0].id, keywords)
   }
   return withCookie(NextResponse.json({ ok: true, slug, matched }), id, isNew)
+}
+
+// PUT — editar un tema propio. { slug, label?, keywords? }
+export async function PUT(req: Request) {
+  const { id, isNew } = await resolveProfile()
+  const body = (await req.json()) as { slug?: string; label?: string; keywords?: string[] }
+  if (!body.slug) {
+    return withCookie(NextResponse.json({ error: 'slug requerido' }, { status: 400 }), id, isNew)
+  }
+  const { rows } = await query<{ id: number }>(
+    `SELECT id FROM topics WHERE slug = $1 AND kind = 'custom' AND owner_profile_id = $2`,
+    [body.slug, id],
+  )
+  if (rows.length === 0) {
+    return withCookie(NextResponse.json({ error: 'tema no encontrado' }, { status: 404 }), id, isNew)
+  }
+  const topicId = rows[0].id
+  const label = body.label?.trim()
+  const keywords =
+    body.keywords?.map((k) => k.trim().toLowerCase()).filter(Boolean) ?? undefined
+
+  await query(
+    `UPDATE topics SET
+       label = COALESCE($2, label),
+       keywords = COALESCE($3, keywords)
+     WHERE id = $1`,
+    [topicId, label && label.length > 0 ? label : null, keywords && keywords.length > 0 ? keywords : null],
+  )
+
+  // Re-enlazar con artículos recientes según las nuevas keywords.
+  let matched = 0
+  if (keywords && keywords.length > 0) {
+    matched = await backfillTopic(topicId, keywords, 30)
+  }
+  return withCookie(NextResponse.json({ ok: true, matched }), id, isNew)
 }
 
 // PATCH — seguir / dejar de seguir. { slug, followed }
