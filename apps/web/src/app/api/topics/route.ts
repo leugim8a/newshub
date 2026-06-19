@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
+import { backfillTopic } from '@/lib/backfill'
 import { PROFILE_COOKIE, cookieOptions, createProfile, getProfileId } from '@/lib/profile'
 
 export const dynamic = 'force-dynamic'
@@ -75,31 +76,6 @@ export async function POST(req: Request) {
     matched = await backfillTopic(ins.rows[0].id, keywords)
   }
   return withCookie(NextResponse.json({ ok: true, slug, matched }), id, isNew)
-}
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-// Enlaza un tema con los artículos recientes que casan sus keywords (palabra
-// completa para una sola palabra; subcadena para frases). Devuelve nº de matches.
-async function backfillTopic(topicId: number, keywords: string[]): Promise<number> {
-  const conds: string[] = []
-  const params: unknown[] = [topicId]
-  for (const k of keywords) {
-    params.push(k.includes(' ') ? `%${k}%` : `\\y${escapeRegex(k)}\\y`)
-    const op = k.includes(' ') ? 'ILIKE' : '~*'
-    conds.push(`(a.title || ' ' || coalesce(a.summary,'')) ${op} $${params.length}`)
-  }
-  if (conds.length === 0) return 0
-  const res = await query(
-    `INSERT INTO article_topics (article_id, topic_id)
-     SELECT a.id, $1 FROM articles a
-     WHERE a.ingested_at > now() - interval '14 days' AND (${conds.join(' OR ')})
-     ON CONFLICT DO NOTHING`,
-    params,
-  )
-  return res.rowCount ?? 0
 }
 
 // PATCH — seguir / dejar de seguir. { slug, followed }
