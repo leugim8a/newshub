@@ -35,7 +35,30 @@ async function run(req: Request): Promise<Response> {
     [SEM_TOPIC_THRESHOLD],
   )
 
-  return NextResponse.json({ linked: res.rowCount ?? 0, ms: Date.now() - started })
+  // Diagnóstico para entender el resultado.
+  const diag = await query<{
+    topics_total: number
+    topics_vec: number
+    arts_vec: number
+    pairs_over: number
+  }>(
+    `SELECT
+       (SELECT count(*) FROM topics)::int AS topics_total,
+       (SELECT count(*) FROM topics WHERE embedding IS NOT NULL)::int AS topics_vec,
+       (SELECT count(*) FROM articles WHERE embedding IS NOT NULL
+          AND ingested_at > now() - interval '${WINDOW_DAYS} days')::int AS arts_vec,
+       (SELECT count(*) FROM articles a CROSS JOIN topics t
+          WHERE a.embedding IS NOT NULL AND t.embedding IS NOT NULL
+            AND a.ingested_at > now() - interval '${WINDOW_DAYS} days'
+            AND 1 - (a.embedding <=> t.embedding) >= $1)::int AS pairs_over`,
+    [SEM_TOPIC_THRESHOLD],
+  )
+
+  return NextResponse.json({
+    linked: res.rowCount ?? 0,
+    ms: Date.now() - started,
+    diag: diag.rows[0],
+  })
 }
 
 export async function POST(req: Request) {
