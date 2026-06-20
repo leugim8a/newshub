@@ -3,6 +3,7 @@ import { query } from '@/lib/db'
 import { embedTexts, embedEnabled, toVector } from '@/lib/embed'
 import { publish } from '@/lib/realtime'
 import { sendPush, type PushSub } from '@/lib/push'
+import { ensureTopicEmbeddings } from '@/lib/topic-vector'
 import { enrichRecentImages } from './enrich'
 import { googleNewsSearch } from './googlenews'
 import { newsapiConnector } from './newsapi'
@@ -20,6 +21,8 @@ const connectors: Record<SourceRow['kind'], Connector> = {
 
 // --- Parámetros de tuning (ver docs/REQUISITOS.md §9) ---
 const CLUSTER_WINDOW = '6 hours'
+// Umbral para asignar un artículo a un tema por semántica (query(tema)↔passage(art)).
+const SEM_TOPIC_THRESHOLD = 0.86
 // e5 comprime las similitudes en un rango alto: misma historia ~0.95,
 // mismo tema/otra historia ~0.90, sin relación ~0.85. Calibrado a 0.92 para
 // agrupar solo la MISMA historia (ver docs/REQUISITOS.md §9).
@@ -109,6 +112,7 @@ export async function runIngest(): Promise<IngestResult> {
   const { rows: sources } = await query<SourceRow>(
     `SELECT id, kind, name, url, lang, config FROM sources WHERE active = true`,
   )
+  await ensureTopicEmbeddings()
   const topics = await loadTopics()
   result.sources = sources.length
 
@@ -229,7 +233,8 @@ export async function processArticles(
     }
   }
 
-  // 3) Clustering + match + (opcional) notificaciones
+  // 3) Clustering + match (keyword + semántico) + (opcional) notificaciones
+  const topicById = new Map(topics.map((t) => [t.id, t]))
   for (const art of fresh) {
     if (art.embedding) {
       art.clusterId = await assignCluster(art)
@@ -239,19 +244,35 @@ export async function processArticles(
         result.clusters_touched++
       }
     }
-    for (const topic of art.matches) {
+
+    // Temas por keyword + temas semánticamente cercanos (si hay embedding).
+    const matchedIds = new Map<number, TopicRow>()
+    for (const t of art.matches) matchedIds.set(t.id, t)
+    if (art.embedding) {
+      const sem = await query<{ id: number }>(
+        `SELECT id FROM topics
+         WHERE embedding IS NOT NULL AND 1 - (embedding <=> $1::vector) >= $2`,
+        [toVector(art.embedding), SEM_TOPIC_THRESHOLD],
+      )
+      for (const r of sem.rows) {
+        const t = topicById.get(r.id)
+        if (t) matchedIds.set(t.id, t)
+      }
+    }
+
+    for (const topic of matchedIds.values()) {
       await query(
         `INSERT INTO article_topics (article_id, topic_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
         [art.id, topic.id],
       )
       if (notify) await notifyProfiles(art, topic, result)
     }
-    if (notify && art.matches.length > 0) {
+    if (notify && matchedIds.size > 0) {
       publish({
         type: 'article',
         title: art.title,
         url: art.url,
-        topic: art.matches[0].slug,
+        topic: matchedIds.values().next().value?.slug,
         at: new Date().toISOString(),
       })
     }

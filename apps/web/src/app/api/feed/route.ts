@@ -44,6 +44,10 @@ export async function GET(req: Request) {
   const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : ''
   params.push(limit)
 
+  // Orden con DIVERSIDAD por fuente (round-robin): primero el artículo más
+  // reciente de cada fuente, luego el segundo de cada una, etc. Así los medios de
+  // alto volumen no monopolizan el feed y los newsletters de bajo volumen no se
+  // ahogan. Dentro de cada "ronda" se ordena por fecha.
   const { rows } = await query(
     `SELECT a.id, a.url, a.title, a.summary, a.image_url, a.lang, a.cluster_id,
             COALESCE(a.published_at, a.ingested_at) AS published_at,
@@ -54,8 +58,12 @@ export async function GET(req: Request) {
      LEFT JOIN article_topics at ON at.article_id = a.id
      LEFT JOIN topics t ON t.id = at.topic_id
      ${where}
-     GROUP BY a.id, s.name
-     ORDER BY COALESCE(a.published_at, a.ingested_at) DESC
+     GROUP BY a.id, a.source_id, s.name
+     ORDER BY ROW_NUMBER() OVER (
+                PARTITION BY a.source_id
+                ORDER BY COALESCE(a.published_at, a.ingested_at) DESC
+              ),
+              COALESCE(a.published_at, a.ingested_at) DESC
      LIMIT $${params.length}`,
     params,
   )

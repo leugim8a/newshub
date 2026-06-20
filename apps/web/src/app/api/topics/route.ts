@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { backfillTopic } from '@/lib/backfill'
+import { storeTopicEmbedding } from '@/lib/topic-vector'
 import { PROFILE_COOKIE, cookieOptions, createProfile, getProfileId } from '@/lib/profile'
 
 export const dynamic = 'force-dynamic'
@@ -71,6 +72,8 @@ export async function POST(req: Request) {
       id,
       ins.rows[0].id,
     ])
+    // Vector del tema (para matching semántico en la ingesta).
+    await storeTopicEmbedding(ins.rows[0].id, label, keywords)
     // Backfill: enlazar el tema nuevo con artículos ya ingeridos (últimos 14 días)
     // para que el feed no aparezca vacío. El match de la ingesta solo corre hacia delante.
     matched = await backfillTopic(ins.rows[0].id, keywords)
@@ -105,7 +108,12 @@ export async function PUT(req: Request) {
     [topicId, label && label.length > 0 ? label : null, keywords && keywords.length > 0 ? keywords : null],
   )
 
-  // Re-enlazar con artículos recientes según las nuevas keywords.
+  // Recalcular el vector del tema y re-enlazar por keywords.
+  const { rows: cur } = await query<{ label: string; keywords: string[] }>(
+    `SELECT label, keywords FROM topics WHERE id = $1`,
+    [topicId],
+  )
+  if (cur[0]) await storeTopicEmbedding(topicId, cur[0].label, cur[0].keywords)
   let matched = 0
   if (keywords && keywords.length > 0) {
     matched = await backfillTopic(topicId, keywords, 30)
