@@ -18,47 +18,47 @@ async function run(req: Request): Promise<Response> {
   const ok = !token || auth === `Bearer ${token}` || url.searchParams.get('token') === token
   if (!ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
-  // Asegurar que los temas tienen vector.
   await ensureTopicEmbeddings()
 
+  const thr = Number(url.searchParams.get('threshold'))
+  const apply = url.searchParams.get('apply') === '1'
+
+  // Modo análisis (por defecto): cuántos pares por umbral + muestra para juzgar.
+  if (!apply) {
+    const counts = await query(
+      `SELECT thr,
+        (SELECT count(*) FROM articles a CROSS JOIN topics t
+         WHERE a.embedding IS NOT NULL AND t.embedding IS NOT NULL
+           AND a.ingested_at > now() - interval '${WINDOW_DAYS} days'
+           AND 1 - (a.embedding <=> t.embedding) >= thr)::int AS pairs
+       FROM unnest(ARRAY[0.80,0.82,0.84,0.86]::float8[]) AS thr`,
+    )
+    const sample = await query(
+      `SELECT round((1 - (a.embedding <=> t.embedding))::numeric, 3) AS sim,
+              t.slug, left(a.title, 60) AS title
+       FROM articles a CROSS JOIN topics t
+       WHERE a.embedding IS NOT NULL AND t.embedding IS NOT NULL
+         AND a.ingested_at > now() - interval '${WINDOW_DAYS} days'
+         AND 1 - (a.embedding <=> t.embedding) >= 0.82
+         AND NOT EXISTS (SELECT 1 FROM article_topics x WHERE x.article_id=a.id AND x.topic_id=t.id)
+       ORDER BY sim DESC LIMIT 25`,
+    )
+    return NextResponse.json({ mode: 'analysis', counts: counts.rows, sample: sample.rows })
+  }
+
+  // Modo aplicar: enlaza al umbral indicado (?apply=1&threshold=0.83).
+  const threshold = thr >= 0.7 && thr <= 0.95 ? thr : SEM_TOPIC_THRESHOLD
   const started = Date.now()
   const res = await query(
     `INSERT INTO article_topics (article_id, topic_id)
-     SELECT a.id, t.id
-     FROM articles a
-     CROSS JOIN topics t
-     WHERE a.embedding IS NOT NULL
-       AND t.embedding IS NOT NULL
+     SELECT a.id, t.id FROM articles a CROSS JOIN topics t
+     WHERE a.embedding IS NOT NULL AND t.embedding IS NOT NULL
        AND a.ingested_at > now() - interval '${WINDOW_DAYS} days'
        AND 1 - (a.embedding <=> t.embedding) >= $1
      ON CONFLICT DO NOTHING`,
-    [SEM_TOPIC_THRESHOLD],
+    [threshold],
   )
-
-  // Diagnóstico para entender el resultado.
-  const diag = await query<{
-    topics_total: number
-    topics_vec: number
-    arts_vec: number
-    pairs_over: number
-  }>(
-    `SELECT
-       (SELECT count(*) FROM topics)::int AS topics_total,
-       (SELECT count(*) FROM topics WHERE embedding IS NOT NULL)::int AS topics_vec,
-       (SELECT count(*) FROM articles WHERE embedding IS NOT NULL
-          AND ingested_at > now() - interval '${WINDOW_DAYS} days')::int AS arts_vec,
-       (SELECT count(*) FROM articles a CROSS JOIN topics t
-          WHERE a.embedding IS NOT NULL AND t.embedding IS NOT NULL
-            AND a.ingested_at > now() - interval '${WINDOW_DAYS} days'
-            AND 1 - (a.embedding <=> t.embedding) >= $1)::int AS pairs_over`,
-    [SEM_TOPIC_THRESHOLD],
-  )
-
-  return NextResponse.json({
-    linked: res.rowCount ?? 0,
-    ms: Date.now() - started,
-    diag: diag.rows[0],
-  })
+  return NextResponse.json({ applied: true, threshold, linked: res.rowCount ?? 0, ms: Date.now() - started })
 }
 
 export async function POST(req: Request) {
