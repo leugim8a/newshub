@@ -8,12 +8,14 @@ import { googleNewsSearch } from './googlenews'
 import { newsapiConnector } from './newsapi'
 import { rssConnector } from './rss'
 import { scrapeConnector } from './scrape'
+import { sitemapConnector } from './sitemap'
 import type { Connector, RawArticle, SourceRow } from './types'
 
 const connectors: Record<SourceRow['kind'], Connector> = {
   rss: rssConnector,
   newsapi: newsapiConnector,
   scrape: scrapeConnector,
+  sitemap: sitemapConnector,
 }
 
 // --- Parámetros de tuning (ver docs/REQUISITOS.md §9) ---

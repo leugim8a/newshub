@@ -1,6 +1,6 @@
 export type SourceRow = {
   id: number
-  kind: 'rss' | 'newsapi' | 'scrape'
+  kind: 'rss' | 'newsapi' | 'scrape' | 'sitemap'
   name: string
   url: string
   lang: string
