@@ -1,6 +1,6 @@
 'use client'
 
-import { Newspaper, Hash, Settings, Radio, TrendingUp } from 'lucide-react'
+import { Newspaper, Hash, Rss, Settings, Radio, TrendingUp } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils/cn'
@@ -9,6 +9,7 @@ const tabs = [
   { id: 'feed', path: '/', icon: Newspaper, label: 'Portada' },
   { id: 'trends', path: '/trends', icon: TrendingUp, label: 'Tendencias' },
   { id: 'topics', path: '/topics', icon: Hash, label: 'Temas' },
+  { id: 'sources', path: '/sources', icon: Rss, label: 'Fuentes' },
   { id: 'settings', path: '/settings', icon: Settings, label: 'Ajustes' },
 ]
 
