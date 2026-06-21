@@ -31,7 +31,7 @@ function withCookie(res: NextResponse, id: string, isNew: boolean) {
 export async function GET() {
   const { id, isNew } = await resolveProfile()
   const { rows } = await query(
-    `SELECT t.slug, t.label, t.kind, t.lang, t.keywords,
+    `SELECT t.slug, t.label, t.kind, t.lang, t.keywords, t.topic_group,
             (pt.profile_id IS NOT NULL) AS followed,
             count(at.article_id) AS article_count
      FROM topics t

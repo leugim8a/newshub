@@ -1,12 +1,13 @@
 'use client'
 
-import { Pencil, Plus, Search, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ChevronDown, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
 import ShinyText from '@/components/ShinyText'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { pushToast } from '@/components/Toaster'
 import { useI18n } from '@/lib/i18n'
+import { cn } from '@/lib/utils/cn'
 
 type Topic = {
   slug: string
@@ -15,6 +16,7 @@ type Topic = {
   followed: boolean
   article_count: number
   keywords?: string[]
+  topic_group?: string | null
 }
 
 export default function TopicsPage() {
@@ -69,8 +71,15 @@ export default function TopicsPage() {
     })
   }
 
-  const curated = topics.filter((x) => x.kind === 'curated')
   const custom = topics.filter((x) => x.kind === 'custom')
+  const inGroup = (g: string) => topics.filter((x) => x.kind === 'curated' && x.topic_group === g)
+  const ungrouped = topics.filter((x) => x.kind === 'curated' && !x.topic_group)
+  const curatedGroups = [
+    { key: 'actualidad', label: t('group.actualidad'), items: inGroup('actualidad') },
+    { key: 'tech', label: t('group.tech'), items: inGroup('tech') },
+    { key: 'sociedad', label: t('group.sociedad'), items: inGroup('sociedad') },
+    { key: 'otros', label: t('topics.curated'), items: ungrouped },
+  ].filter((g) => g.items.length > 0)
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-10">
@@ -102,38 +111,60 @@ export default function TopicsPage() {
       </section>
 
       {/* Tus temas */}
-      <section className="mb-10">
-        <h2 className="mb-3 text-sm font-semibold text-muted-foreground">{t('topics.custom')}</h2>
+      <Group title={t('topics.custom')} count={custom.length}>
         {custom.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
             {t('topics.customEmpty')}
           </p>
         ) : (
-          <div className="flex flex-col gap-3">
-            {custom.map((tp) => (
-              <TopicRow
-                key={tp.slug}
-                tp={tp}
-                onToggle={toggle}
-                onRemove={remove}
-                onSearched={load}
-                onEdited={load}
-              />
-            ))}
-          </div>
+          custom.map((tp) => (
+            <TopicRow
+              key={tp.slug}
+              tp={tp}
+              onToggle={toggle}
+              onRemove={remove}
+              onSearched={load}
+              onEdited={load}
+            />
+          ))
         )}
-      </section>
+      </Group>
 
-      {/* Categorías curadas */}
-      <section>
-        <h2 className="mb-3 text-sm font-semibold text-muted-foreground">{t('topics.curated')}</h2>
-        <div className="flex flex-col gap-3">
-          {curated.map((tp) => (
+      {/* Categorías curadas, agrupadas */}
+      {curatedGroups.map((g) => (
+        <Group key={g.key} title={g.label} count={g.items.length}>
+          {g.items.map((tp) => (
             <TopicRow key={tp.slug} tp={tp} onToggle={toggle} onSearched={load} />
           ))}
-        </div>
-      </section>
+        </Group>
+      ))}
     </div>
+  )
+}
+
+function Group({
+  title,
+  count,
+  children,
+}: {
+  title: string
+  count?: number
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(true)
+  return (
+    <section className="mb-6">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="mb-3 flex w-full items-center gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ChevronDown className={cn('h-4 w-4 transition-transform', !open && '-rotate-90')} />
+        <span>{title}</span>
+        {count != null && <span className="text-xs font-normal opacity-70">({count})</span>}
+      </button>
+      {open && <div className="flex flex-col gap-3">{children}</div>}
+    </section>
   )
 }
 
