@@ -22,7 +22,9 @@ const connectors: Record<SourceRow['kind'], Connector> = {
 // --- Parámetros de tuning (ver docs/REQUISITOS.md §9) ---
 const CLUSTER_WINDOW = '6 hours'
 // Umbral para asignar un artículo a un tema por semántica (query(tema)↔passage(art)).
-const SEM_TOPIC_THRESHOLD = 0.86
+// Calibrado en prod: 0.86 dejaba pasar casi nada (15 pares); 0.84 da buena recall
+// (titulares oblicuos tipo Rundown) sin disparar el ruido de 0.82.
+const SEM_TOPIC_THRESHOLD = 0.84
 // e5 comprime las similitudes en un rango alto: misma historia ~0.95,
 // mismo tema/otra historia ~0.90, sin relación ~0.85. Calibrado a 0.92 para
 // agrupar solo la MISMA historia (ver docs/REQUISITOS.md §9).
