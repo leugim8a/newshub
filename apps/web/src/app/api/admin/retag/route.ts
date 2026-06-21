@@ -33,28 +33,41 @@ async function run(req: Request): Promise<Response> {
            AND 1 - (a.embedding <=> t.embedding) >= thr)::int AS pairs
        FROM unnest(ARRAY[0.80,0.82,0.84,0.86]::float8[]) AS thr`,
     )
-    // Enlaces existentes SIN respaldo semántico (candidatos a limpieza).
-    const weak = await query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM article_topics at
-       JOIN articles a ON a.id = at.article_id
-       JOIN topics t ON t.id = at.topic_id
-       WHERE a.embedding IS NOT NULL AND t.embedding IS NOT NULL
-         AND 1 - (a.embedding <=> t.embedding) < $1`,
-      [SEM_CONFIRM],
+    // Distribución de los enlaces ACTUALES por franja de similitud: muestra qué
+    // se quitaría al subir el umbral de confirmación.
+    const bands = await query(
+      `WITH linked AS (
+         SELECT 1 - (a.embedding <=> t.embedding) AS sim
+         FROM article_topics at
+         JOIN articles a ON a.id=at.article_id
+         JOIN topics t ON t.id=at.topic_id
+         WHERE a.embedding IS NOT NULL AND t.embedding IS NOT NULL)
+       SELECT
+         count(*) FILTER (WHERE sim >= 0.80 AND sim < 0.82)::int AS b_80_82,
+         count(*) FILTER (WHERE sim >= 0.82 AND sim < 0.84)::int AS b_82_84,
+         count(*) FILTER (WHERE sim >= 0.84 AND sim < 0.86)::int AS b_84_86,
+         count(*) FILTER (WHERE sim >= 0.86)::int AS b_86_plus,
+         count(*)::int AS total
+       FROM linked`,
     )
-    const weakSample = await query(
-      `SELECT round((1 - (a.embedding <=> t.embedding))::numeric,3) AS sim, t.slug, left(a.title,55) AS title
-       FROM article_topics at JOIN articles a ON a.id=at.article_id JOIN topics t ON t.id=at.topic_id
-       WHERE a.embedding IS NOT NULL AND t.embedding IS NOT NULL
-         AND 1 - (a.embedding <=> t.embedding) < $1
-       ORDER BY sim ASC LIMIT 20`,
-      [SEM_CONFIRM],
-    )
+    // Muestra de lo que está JUSTO en cada franja baja (lo que se perdería al subir).
+    const sampleBand = (lo: number, hi: number) =>
+      query(
+        `SELECT round((1 - (a.embedding <=> t.embedding))::numeric,3) AS sim, t.slug, left(a.title,52) AS title
+         FROM article_topics at JOIN articles a ON a.id=at.article_id JOIN topics t ON t.id=at.topic_id
+         WHERE a.embedding IS NOT NULL AND t.embedding IS NOT NULL
+           AND 1 - (a.embedding <=> t.embedding) >= $1 AND 1 - (a.embedding <=> t.embedding) < $2
+         ORDER BY random() LIMIT 12`,
+        [lo, hi],
+      )
+    const s80 = await sampleBand(0.8, 0.82)
+    const s82 = await sampleBand(0.82, 0.84)
     return NextResponse.json({
       mode: 'analysis',
-      counts: counts.rows,
-      weak_links: weak.rows[0]?.n ?? 0,
-      weak_sample: weakSample.rows,
+      candidate_pairs: counts.rows,
+      linked_by_band: bands.rows[0],
+      sample_0_80_82: s80.rows,
+      sample_0_82_84: s82.rows,
     })
   }
 
