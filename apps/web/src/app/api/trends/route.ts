@@ -19,8 +19,8 @@ export async function GET() {
        ORDER BY COALESCE(a.published_at, a.ingested_at) DESC
        LIMIT 1
      ) top ON true
-     WHERE c.last_seen > now() - interval '6 hours' AND c.size >= 3
-     ORDER BY c.score_trend DESC, c.size DESC
+     WHERE c.last_seen > now() - interval '12 hours' AND c.size >= 2
+     ORDER BY c.source_count DESC, c.score_trend DESC, c.size DESC
      LIMIT 30`,
   )
   return NextResponse.json({ trends: rows })
