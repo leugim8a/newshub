@@ -21,10 +21,12 @@ const connectors: Record<SourceRow['kind'], Connector> = {
 
 // --- Parámetros de tuning (ver docs/REQUISITOS.md §9) ---
 const CLUSTER_WINDOW = '6 hours'
-// Umbral para asignar un artículo a un tema por semántica (query(tema)↔passage(art)).
-// Calibrado en prod: 0.86 dejaba pasar casi nada (15 pares); 0.84 da buena recall
-// (titulares oblicuos tipo Rundown) sin disparar el ruido de 0.82.
-const SEM_TOPIC_THRESHOLD = 0.84
+// Asignación de un artículo a un tema (vector limpio del tema vs vector del art):
+//  - SEM_HIGH: semántica fuerte por sí sola basta (titular oblicuo sin keyword).
+//  - SEM_CONFIRM: si casa keyword, exige al menos esta cercanía semántica
+//    (así "sts" solo vale si el artículo ADEMÁS trata de agentes de voz).
+const SEM_HIGH = 0.84
+const SEM_CONFIRM = 0.8
 // e5 comprime las similitudes en un rango alto: misma historia ~0.95,
 // mismo tema/otra historia ~0.90, sin relación ~0.85. Calibrado a 0.92 para
 // agrupar solo la MISMA historia (ver docs/REQUISITOS.md §9).
@@ -247,19 +249,25 @@ export async function processArticles(
       }
     }
 
-    // Temas por keyword + temas semánticamente cercanos (si hay embedding).
+    // Asignación combinada: semántica fuerte por sí sola, O keyword confirmada
+    // por semántica. Sin embedding (servicio caído) → keyword sola (degradado).
     const matchedIds = new Map<number, TopicRow>()
-    for (const t of art.matches) matchedIds.set(t.id, t)
     if (art.embedding) {
-      const sem = await query<{ id: number }>(
-        `SELECT id FROM topics
-         WHERE embedding IS NOT NULL AND 1 - (embedding <=> $1::vector) >= $2`,
-        [toVector(art.embedding), SEM_TOPIC_THRESHOLD],
+      const kwIds = new Set(art.matches.map((m) => m.id))
+      const sims = await query<{ id: number; sim: number }>(
+        `SELECT id, 1 - (embedding <=> $1::vector) AS sim FROM topics WHERE embedding IS NOT NULL`,
+        [toVector(art.embedding)],
       )
-      for (const r of sem.rows) {
+      for (const r of sims.rows) {
+        const sim = Number(r.sim)
         const t = topicById.get(r.id)
-        if (t) matchedIds.set(t.id, t)
+        if (!t) continue
+        if (sim >= SEM_HIGH || (kwIds.has(t.id) && sim >= SEM_CONFIRM)) {
+          matchedIds.set(t.id, t)
+        }
       }
+    } else {
+      for (const t of art.matches) matchedIds.set(t.id, t)
     }
 
     for (const topic of matchedIds.values()) {

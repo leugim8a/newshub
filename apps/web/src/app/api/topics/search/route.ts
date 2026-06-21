@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { embedTexts, toVector } from '@/lib/embed'
+import { topicVectorText } from '@/lib/topic-vector'
 import { searchNews } from '@/ingest'
 import { PROFILE_COOKIE, cookieOptions, createProfile, getProfileId } from '@/lib/profile'
 
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
   // 2) Filtro semántico: enlazar al tema solo los resultados de búsqueda
   //    realmente cercanos (rechaza homónimos como "STS" Ship-to-Ship).
   const ids = search.articleIds ?? []
-  const topicVecs = await embedTexts([`${topic.label}. ${topic.keywords.join(', ')}`], 'query')
+  const topicVecs = await embedTexts([topicVectorText(topic.label, topic.keywords)], 'query')
   let relevant: number | null = null
 
   // Reconstruir desde cero los enlaces del tema con artículos de búsqueda.
