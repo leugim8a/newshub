@@ -148,6 +148,7 @@ export function TitularRow({
 
 type Trend = {
   id: number
+  size: number
   source_count: number
   top_title: string | null
   top_url: string | null
@@ -189,7 +190,9 @@ export function TrendsRail() {
                 {tr.top_title ?? tr.label}
               </p>
               <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                {tr.source_count} {t('trends.sources')}
+                {tr.source_count >= 2
+                  ? `${tr.source_count} ${t('trends.sources')}`
+                  : `${tr.size} ${t('trends.articles')}`}
                 <ExternalLink className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
               </p>
             </div>

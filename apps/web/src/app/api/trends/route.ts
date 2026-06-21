@@ -20,7 +20,7 @@ export async function GET() {
        LIMIT 1
      ) top ON true
      WHERE c.last_seen > now() - interval '12 hours' AND c.size >= 2
-     ORDER BY c.source_count DESC, c.score_trend DESC, c.size DESC
+     ORDER BY c.size DESC, c.source_count DESC, c.score_trend DESC
      LIMIT 30`,
   )
   return NextResponse.json({ trends: rows })
