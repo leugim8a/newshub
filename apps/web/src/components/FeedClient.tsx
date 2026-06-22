@@ -349,7 +349,8 @@ export function FeedClient() {
           // Todas las ocultas (aunque ahora no tengan artículos) para poder restaurarlas.
           const hiddenList = sectionOrder.filter((k) => hidden.includes(k))
           return (
-            <div className="flex flex-col gap-8">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
+              <div className="flex flex-col gap-8">
               {rendered.map((key, idx) => (
                 <section
                   key={key}
@@ -424,6 +425,10 @@ export function FeedClient() {
                   ))}
                 </div>
               )}
+              </div>
+              <aside className="hidden lg:block">
+                <TrendsRail />
+              </aside>
             </div>
           )
         })()
