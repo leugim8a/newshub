@@ -84,6 +84,15 @@ function decodeXml(s: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
 }
+// "200+", "2K+", "1M+" → número (para ordenar por volumen de búsqueda).
+function parseTraffic(s: string): number {
+  const m = (s || '').replace(/[+,\s]/g, '').match(/^([\d.]+)([KM]?)$/i)
+  if (!m) return 0
+  let n = parseFloat(m[1])
+  if (/k/i.test(m[2])) n *= 1000
+  else if (/m/i.test(m[2])) n *= 1_000_000
+  return n
+}
 async function google(lang: string): Promise<TrendItem[]> {
   const geo = lang === 'en' ? 'US' : 'ES'
   const res = await fetch(`https://trends.google.com/trending/rss?geo=${geo}`, {
@@ -94,7 +103,6 @@ async function google(lang: string): Promise<TrendItem[]> {
   const xml = await res.text()
   const blocks = xml.match(/<item>[\s\S]*?<\/item>/g) ?? []
   return blocks
-    .slice(0, 12)
     .map((b) => {
       const term = decodeXml((b.match(/<title>([\s\S]*?)<\/title>/)?.[1] ?? '').trim())
       const traffic = (b.match(/<ht:approx_traffic>([^<]*)<\/ht:approx_traffic>/)?.[1] ?? '').trim()
@@ -103,9 +111,13 @@ async function google(lang: string): Promise<TrendItem[]> {
         title: term,
         url: newsUrl || `https://www.google.com/search?q=${encodeURIComponent(term)}`,
         info: traffic || undefined,
+        _t: parseTraffic(traffic),
       }
     })
     .filter((x) => x.title)
+    .sort((a, b) => b._t - a._t) // ordenar por volumen de búsqueda
+    .slice(0, 12)
+    .map(({ _t, ...rest }) => rest)
 }
 
 // GET /api/trends/external?sources=wikipedia,mastodon,google&lang=es
