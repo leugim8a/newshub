@@ -1,6 +1,6 @@
 'use client'
 
-import { AlignJustify, ImageIcon, LayoutGrid, Newspaper } from 'lucide-react'
+import { AlignJustify, ImageIcon, LayoutGrid, LayoutPanelTop, Newspaper } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { ArticleCard, type Article } from '@/components/ArticleCard'
 import { NotificationBell } from '@/components/NotificationBell'
@@ -10,15 +10,29 @@ import { pushToast } from '@/components/Toaster'
 import { useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils/cn'
 
-type Topic = { slug: string; label: string; followed: boolean; article_count: number }
+type Topic = {
+  slug: string
+  label: string
+  kind: 'curated' | 'custom'
+  followed: boolean
+  article_count: number
+  topic_group?: string | null
+}
 type View = 'portada' | 'cards' | 'headlines' | 'mosaic'
 
-const VIEWS: { id: View; icon: typeof Newspaper; labelKey: 'view.portada' | 'view.cards' | 'view.headlines' | 'view.mosaic' }[] = [
+const VIEWS: {
+  id: View
+  icon: typeof Newspaper
+  labelKey: 'view.portada' | 'view.cards' | 'view.headlines' | 'view.mosaic'
+}[] = [
   { id: 'portada', icon: Newspaper, labelKey: 'view.portada' },
   { id: 'cards', icon: ImageIcon, labelKey: 'view.cards' },
   { id: 'headlines', icon: AlignJustify, labelKey: 'view.headlines' },
   { id: 'mosaic', icon: LayoutGrid, labelKey: 'view.mosaic' },
 ]
+
+const SECTION_ORDER = ['actualidad', 'tech', 'sociedad', 'custom', 'general'] as const
+type SectionKey = (typeof SECTION_ORDER)[number]
 
 export function FeedClient() {
   const { t, lang, setLang } = useI18n()
@@ -27,15 +41,23 @@ export function FeedClient() {
   const [active, setActive] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<View>('portada')
+  const [sectioned, setSectioned] = useState(false)
 
   useEffect(() => {
-    const saved = localStorage.getItem('newshub.view') as View | null
-    if (saved) setView(saved)
+    const v = localStorage.getItem('newshub.view') as View | null
+    if (v) setView(v)
+    setSectioned(localStorage.getItem('newshub.sectioned') === '1')
   }, [])
 
   const changeView = (v: View) => {
     setView(v)
     localStorage.setItem('newshub.view', v)
+  }
+  const toggleSections = () => {
+    setSectioned((s) => {
+      localStorage.setItem('newshub.sectioned', s ? '0' : '1')
+      return !s
+    })
   }
 
   const loadFeed = useCallback(async (sel: string | null) => {
@@ -85,7 +107,67 @@ export function FeedClient() {
     })
   }
 
-  const wide = view === 'portada' || view === 'mosaic'
+  // Renderiza un conjunto de artículos según el estilo de la vista.
+  const renderItems = (arts: Article[]) => {
+    if (arts.length === 0) return null
+    if (view === 'headlines') {
+      return (
+        <div className="rounded-2xl border border-border bg-card px-3 py-1.5">
+          {arts.map((a) => (
+            <TitularRow key={a.id} article={a} onDiscard={discard} />
+          ))}
+        </div>
+      )
+    }
+    if (view === 'mosaic') {
+      return (
+        <div className="gap-3 sm:columns-2 lg:columns-3 [&>*]:mb-3 [&>*]:break-inside-avoid">
+          {arts.map((a) => (
+            <ArticleCard key={a.id} article={a} onDiscard={discard} />
+          ))}
+        </div>
+      )
+    }
+    if (view === 'cards') {
+      return (
+        <div className="flex flex-col gap-3">
+          {arts.map((a) => (
+            <ArticleCard key={a.id} article={a} onDiscard={discard} />
+          ))}
+        </div>
+      )
+    }
+    // portada (dentro de secciones) → rejilla de titulares
+    return (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {arts.map((a) => (
+          <HeadlineCard key={a.id} article={a} onDiscard={discard} />
+        ))}
+      </div>
+    )
+  }
+
+  // Asigna cada artículo a una sección según el grupo de sus temas.
+  const slugInfo = new Map(topics.map((tp) => [tp.slug, tp]))
+  const sectionOf = (a: Article): SectionKey => {
+    let custom = false
+    for (const s of a.topics) {
+      const info = slugInfo.get(s)
+      if (info?.topic_group) return info.topic_group as SectionKey
+      if (info && info.kind === 'custom') custom = true
+    }
+    return custom ? 'custom' : 'general'
+  }
+  const sectionLabel: Record<SectionKey, string> = {
+    actualidad: t('group.actualidad'),
+    tech: t('group.tech'),
+    sociedad: t('group.sociedad'),
+    custom: t('topics.custom'),
+    general: t('feed.general'),
+  }
+
+  const showSections = sectioned && (active === null || active === 'all')
+  const wide = view === 'portada' || view === 'mosaic' || showSections
 
   return (
     <div className={cn('mx-auto px-6 py-10', wide ? 'max-w-5xl' : 'max-w-3xl')}>
@@ -108,7 +190,7 @@ export function FeedClient() {
         <p className="text-sm text-muted-foreground">{t('feed.subtitle')}</p>
       </header>
 
-      {/* Filtros + selector de vista */}
+      {/* Filtros + secciones + selector de vista */}
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <Chip label={t('topics.following')} active={active === null} onClick={() => setActive(null)} />
         <Chip label={t('feed.all')} active={active === 'all'} onClick={() => setActive('all')} />
@@ -120,27 +202,44 @@ export function FeedClient() {
             onClick={() => setActive(tp.slug)}
           />
         ))}
-        <div className="ml-auto flex items-center gap-1 rounded-full border border-border p-0.5">
-          {VIEWS.map((v) => {
-            const Icon = v.icon
-            return (
-              <button
-                key={v.id}
-                type="button"
-                onClick={() => changeView(v.id)}
-                title={t(v.labelKey)}
-                aria-label={t(v.labelKey)}
-                className={cn(
-                  'flex h-7 w-7 items-center justify-center rounded-full transition-colors',
-                  view === v.id
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                <Icon className="h-4 w-4" />
-              </button>
-            )
-          })}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleSections}
+            title={t('feed.sections')}
+            aria-label={t('feed.sections')}
+            className={cn(
+              'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+              sectioned
+                ? 'border-accent bg-accent/15 text-accent'
+                : 'border-border text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <LayoutPanelTop className="h-4 w-4" />
+            <span className="hidden sm:inline">{t('feed.sections')}</span>
+          </button>
+          <div className="flex items-center gap-1 rounded-full border border-border p-0.5">
+            {VIEWS.map((v) => {
+              const Icon = v.icon
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => changeView(v.id)}
+                  title={t(v.labelKey)}
+                  aria-label={t(v.labelKey)}
+                  className={cn(
+                    'flex h-7 w-7 items-center justify-center rounded-full transition-colors',
+                    view === v.id
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
 
@@ -150,6 +249,21 @@ export function FeedClient() {
         <p className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
           {t('feed.empty')}
         </p>
+      ) : showSections ? (
+        <div className="flex flex-col gap-8">
+          {SECTION_ORDER.map((key) => {
+            const items = articles.filter((a) => sectionOf(a) === key)
+            if (items.length === 0) return null
+            return (
+              <section key={key}>
+                <h2 className="mb-3 border-b border-border pb-2 text-sm font-semibold uppercase tracking-wide text-accent">
+                  {sectionLabel[key]}
+                </h2>
+                {renderItems(items)}
+              </section>
+            )
+          })}
+        </div>
       ) : view === 'portada' ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
           <div>
@@ -164,24 +278,8 @@ export function FeedClient() {
             <TrendsRail />
           </aside>
         </div>
-      ) : view === 'headlines' ? (
-        <div className="rounded-2xl border border-border bg-card px-3 py-1.5">
-          {articles.map((a) => (
-            <TitularRow key={a.id} article={a} onDiscard={discard} />
-          ))}
-        </div>
-      ) : view === 'mosaic' ? (
-        <div className="gap-3 [column-fill:balance] sm:columns-2 lg:columns-3 [&>*]:mb-3 [&>*]:break-inside-avoid">
-          {articles.map((a) => (
-            <ArticleCard key={a.id} article={a} onDiscard={discard} />
-          ))}
-        </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {articles.map((a) => (
-            <ArticleCard key={a.id} article={a} onDiscard={discard} />
-          ))}
-        </div>
+        renderItems(articles)
       )}
     </div>
   )
