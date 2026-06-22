@@ -346,9 +346,8 @@ export function FeedClient() {
         (() => {
           const itemsOf = (key: SectionKey) => articles.filter((a) => sectionOf(a) === key)
           const rendered = sectionOrder.filter((k) => !hidden.includes(k) && itemsOf(k).length > 0)
-          const hiddenWithItems = sectionOrder.filter(
-            (k) => hidden.includes(k) && itemsOf(k).length > 0,
-          )
+          // Todas las ocultas (aunque ahora no tengan artículos) para poder restaurarlas.
+          const hiddenList = sectionOrder.filter((k) => hidden.includes(k))
           return (
             <div className="flex flex-col gap-8">
               {rendered.map((key, idx) => (
@@ -409,10 +408,10 @@ export function FeedClient() {
                 </section>
               ))}
 
-              {hiddenWithItems.length > 0 && (
+              {hiddenList.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
                   <span className="text-xs text-muted-foreground">{t('feed.hidden')}:</span>
-                  {hiddenWithItems.map((key) => (
+                  {hiddenList.map((key) => (
                     <button
                       key={key}
                       type="button"
