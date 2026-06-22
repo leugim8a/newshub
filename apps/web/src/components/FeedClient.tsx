@@ -31,6 +31,14 @@ type Topic = {
 }
 type View = 'portada' | 'cards' | 'headlines' | 'mosaic'
 
+type Prefs = {
+  view?: View
+  sectioned?: boolean
+  sectionOrder?: string[]
+  hidden?: string[]
+  chipsOpen?: boolean
+}
+
 const VIEWS: {
   id: View
   icon: typeof Newspaper
@@ -42,23 +50,23 @@ const VIEWS: {
   { id: 'mosaic', icon: LayoutGrid, labelKey: 'view.mosaic' },
 ]
 
-const SECTION_ORDER = ['actualidad', 'tech', 'sociedad', 'custom', 'general'] as const
-type SectionKey = (typeof SECTION_ORDER)[number]
+const BUILTIN_ORDER = ['actualidad', 'tech', 'sociedad']
+const DEFAULT_SECTION_ORDER = [...BUILTIN_ORDER, 'custom', 'general']
 
-type Prefs = {
-  view?: View
-  sectioned?: boolean
-  sectionOrder?: SectionKey[]
-  hidden?: SectionKey[]
+function rank(k: string): number {
+  const i = BUILTIN_ORDER.indexOf(k)
+  if (i >= 0) return i
+  if (k === 'custom') return 100
+  if (k === 'general') return 101
+  return 50 // secciones de usuario
 }
-
-// Asegura que el orden guardado contiene exactamente las secciones válidas.
-function normalizeOrder(arr: unknown): SectionKey[] {
-  const valid = Array.isArray(arr)
-    ? (arr.filter((k) => (SECTION_ORDER as readonly string[]).includes(k)) as SectionKey[])
-    : []
-  const missing = SECTION_ORDER.filter((k) => !valid.includes(k))
-  return [...valid, ...missing]
+// Mezcla el orden guardado con las secciones presentes (las nuevas se añaden).
+function mergeOrder(saved: string[], present: string[]): string[] {
+  const inSaved = saved.filter((k) => present.includes(k))
+  const rest = present
+    .filter((k) => !inSaved.includes(k))
+    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+  return [...inSaved, ...rest]
 }
 
 export function FeedClient() {
@@ -69,29 +77,27 @@ export function FeedClient() {
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<View>('portada')
   const [sectioned, setSectioned] = useState(false)
-  const [sectionOrder, setSectionOrder] = useState<SectionKey[]>([...SECTION_ORDER])
-  const [hidden, setHidden] = useState<SectionKey[]>([])
-  const [dragKey, setDragKey] = useState<SectionKey | null>(null)
-  const [dragOver, setDragOver] = useState<SectionKey | null>(null)
+  const [sectionOrder, setSectionOrder] = useState<string[]>([...DEFAULT_SECTION_ORDER])
+  const [hidden, setHidden] = useState<string[]>([])
+  const [chipsOpen, setChipsOpen] = useState(false)
+  const [dragKey, setDragKey] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState<string | null>(null)
 
   const applyPrefs = (p: Prefs) => {
     if (p.view) setView(p.view)
     if (typeof p.sectioned === 'boolean') setSectioned(p.sectioned)
-    if (p.sectionOrder) setSectionOrder(normalizeOrder(p.sectionOrder))
-    if (Array.isArray(p.hidden)) {
-      setHidden(p.hidden.filter((k) => (SECTION_ORDER as readonly string[]).includes(k)) as SectionKey[])
-    }
+    if (typeof p.chipsOpen === 'boolean') setChipsOpen(p.chipsOpen)
+    if (Array.isArray(p.sectionOrder)) setSectionOrder(p.sectionOrder.filter((k) => typeof k === 'string'))
+    if (Array.isArray(p.hidden)) setHidden(p.hidden.filter((k) => typeof k === 'string'))
   }
 
   useEffect(() => {
-    // 1) localStorage (instantáneo)
     try {
       const local = JSON.parse(localStorage.getItem('newshub.prefs') || 'null')
       if (local) applyPrefs(local)
     } catch {
       /* prefs corruptas → defaults */
     }
-    // 2) perfil en BD (cross-device) sobrescribe si tiene prefs
     fetch('/api/profile')
       .then((r) => r.json())
       .then((d: { prefs?: Prefs }) => {
@@ -104,7 +110,6 @@ export function FeedClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Persiste un set completo de prefs en localStorage y en el perfil (BD).
   const persist = (p: Prefs) => {
     localStorage.setItem('newshub.prefs', JSON.stringify(p))
     fetch('/api/profile', {
@@ -113,7 +118,7 @@ export function FeedClient() {
       body: JSON.stringify({ prefs: p }),
     }).catch(() => {})
   }
-  const snapshot = (over: Prefs): Prefs => ({ view, sectioned, sectionOrder, hidden, ...over })
+  const snapshot = (over: Prefs): Prefs => ({ view, sectioned, sectionOrder, hidden, chipsOpen, ...over })
 
   const changeView = (v: View) => {
     setView(v)
@@ -124,34 +129,41 @@ export function FeedClient() {
     setSectioned(ns)
     persist(snapshot({ sectioned: ns }))
   }
-  const applyOrder = (next: SectionKey[]) => {
+  const toggleChips = () => {
+    const nc = !chipsOpen
+    setChipsOpen(nc)
+    persist(snapshot({ chipsOpen: nc }))
+  }
+  const applyOrder = (next: string[]) => {
     setSectionOrder(next)
     persist(snapshot({ sectionOrder: next }))
   }
-  const moveSection = (key: SectionKey, dir: -1 | 1, rendered: SectionKey[]) => {
+  const moveSection = (key: string, dir: -1 | 1, rendered: string[]) => {
     const i = rendered.indexOf(key)
     const j = i + dir
     if (j < 0 || j >= rendered.length) return
-    const next = [...sectionOrder]
+    const present = rendered
+    const next = mergeOrder(sectionOrder, present)
     const a = next.indexOf(key)
     const b = next.indexOf(rendered[j])
     ;[next[a], next[b]] = [next[b], next[a]]
     applyOrder(next)
   }
-  const dropOn = (target: SectionKey) => {
+  const dropOn = (target: string) => {
     setDragOver(null)
     if (!dragKey || dragKey === target) return
     const next = sectionOrder.filter((k) => k !== dragKey)
+    if (!next.includes(target)) next.push(target)
     next.splice(next.indexOf(target), 0, dragKey)
     setDragKey(null)
     applyOrder(next)
   }
-  const setHiddenP = (h: SectionKey[]) => {
+  const setHiddenP = (h: string[]) => {
     setHidden(h)
     persist(snapshot({ hidden: h }))
   }
-  const hideSection = (key: SectionKey) => setHiddenP([...hidden, key])
-  const showSection = (key: SectionKey) => setHiddenP(hidden.filter((k) => k !== key))
+  const hideSection = (key: string) => setHiddenP([...hidden, key])
+  const showSection = (key: string) => setHiddenP(hidden.filter((k) => k !== key))
 
   const loadFeed = useCallback(async (sel: string | null) => {
     const url = sel === 'all' ? '/api/feed?all=1' : sel ? `/api/feed?topic=${sel}` : '/api/feed'
@@ -200,7 +212,32 @@ export function FeedClient() {
     })
   }
 
-  // Renderiza un conjunto de artículos según el estilo de la vista.
+  const builtinLabels: Record<string, string> = {
+    actualidad: t('group.actualidad'),
+    tech: t('group.tech'),
+    sociedad: t('group.sociedad'),
+    custom: t('topics.custom'),
+    general: t('feed.general'),
+  }
+  const labelOf = (key: string) => builtinLabels[key] ?? key
+
+  const slugInfo = new Map(topics.map((tp) => [tp.slug, tp]))
+  const sectionOf = (a: Article): string => {
+    let custom = false
+    for (const s of a.topics) {
+      const info = slugInfo.get(s)
+      if (info?.topic_group) return info.topic_group
+      if (info && info.kind === 'custom') custom = true
+    }
+    return custom ? 'custom' : 'general'
+  }
+  const topicSectionKey = (tp: Topic) => tp.topic_group ?? (tp.kind === 'custom' ? 'custom' : 'general')
+
+  // Chips de temas agrupados por sección.
+  const chipSectionKeys = [...new Set(topics.map(topicSectionKey))].sort(
+    (a, b) => rank(a) - rank(b) || a.localeCompare(b),
+  )
+
   const renderItems = (arts: Article[]) => {
     if (arts.length === 0) return null
     if (view === 'headlines') {
@@ -230,7 +267,6 @@ export function FeedClient() {
         </div>
       )
     }
-    // portada (dentro de secciones) → rejilla de titulares
     return (
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {arts.map((a) => (
@@ -238,25 +274,6 @@ export function FeedClient() {
         ))}
       </div>
     )
-  }
-
-  // Asigna cada artículo a una sección según el grupo de sus temas.
-  const slugInfo = new Map(topics.map((tp) => [tp.slug, tp]))
-  const sectionOf = (a: Article): SectionKey => {
-    let custom = false
-    for (const s of a.topics) {
-      const info = slugInfo.get(s)
-      if (info?.topic_group) return info.topic_group as SectionKey
-      if (info && info.kind === 'custom') custom = true
-    }
-    return custom ? 'custom' : 'general'
-  }
-  const sectionLabel: Record<SectionKey, string> = {
-    actualidad: t('group.actualidad'),
-    tech: t('group.tech'),
-    sociedad: t('group.sociedad'),
-    custom: t('topics.custom'),
-    general: t('feed.general'),
   }
 
   const showSections = sectioned && (active === null || active === 'all')
@@ -283,24 +300,28 @@ export function FeedClient() {
         <p className="text-sm text-muted-foreground">{t('feed.subtitle')}</p>
       </header>
 
-      {/* Filtros + secciones + selector de vista */}
-      <div className="mb-6 flex flex-wrap items-center gap-2">
+      {/* Controles: Siguiendo/Todo · Temas (plegable) · Secciones · Vista */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <Chip label={t('topics.following')} active={active === null} onClick={() => setActive(null)} />
         <Chip label={t('feed.all')} active={active === 'all'} onClick={() => setActive('all')} />
-        {topics.map((tp) => (
-          <Chip
-            key={tp.slug}
-            label={`#${tp.label}`}
-            active={active === tp.slug}
-            onClick={() => setActive(tp.slug)}
-          />
-        ))}
+        <button
+          type="button"
+          onClick={toggleChips}
+          className={cn(
+            'flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
+            chipsOpen
+              ? 'border-accent bg-accent/15 text-accent'
+              : 'border-border text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {t('feed.topicsFilter')}
+          <ChevronDown className={cn('h-4 w-4 transition-transform', !chipsOpen && '-rotate-90')} />
+        </button>
         <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
             onClick={toggleSections}
             title={t('feed.sections')}
-            aria-label={t('feed.sections')}
             className={cn(
               'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
               sectioned
@@ -320,7 +341,6 @@ export function FeedClient() {
                   type="button"
                   onClick={() => changeView(v.id)}
                   title={t(v.labelKey)}
-                  aria-label={t(v.labelKey)}
                   className={cn(
                     'flex h-7 w-7 items-center justify-center rounded-full transition-colors',
                     view === v.id
@@ -336,6 +356,31 @@ export function FeedClient() {
         </div>
       </div>
 
+      {/* Chips de temas agrupados por sección (plegable) */}
+      {chipsOpen && (
+        <div className="mb-6 flex flex-col gap-2 rounded-2xl border border-border bg-card/50 p-3">
+          {chipSectionKeys.map((key) => {
+            const list = topics.filter((tp) => topicSectionKey(tp) === key)
+            if (list.length === 0) return null
+            return (
+              <div key={key} className="flex flex-wrap items-center gap-2">
+                <span className="mr-1 w-full text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:w-auto">
+                  {labelOf(key)}
+                </span>
+                {list.map((tp) => (
+                  <Chip
+                    key={tp.slug}
+                    label={`#${tp.label}`}
+                    active={active === tp.slug}
+                    onClick={() => setActive(tp.slug)}
+                  />
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {loading ? (
         <p className="text-sm text-muted-foreground">…</p>
       ) : articles.length === 0 ? (
@@ -344,87 +389,85 @@ export function FeedClient() {
         </p>
       ) : showSections ? (
         (() => {
-          const itemsOf = (key: SectionKey) => articles.filter((a) => sectionOf(a) === key)
-          const rendered = sectionOrder.filter((k) => !hidden.includes(k) && itemsOf(k).length > 0)
-          // Todas las ocultas (aunque ahora no tengan artículos) para poder restaurarlas.
-          const hiddenList = sectionOrder.filter((k) => hidden.includes(k))
+          const itemsOf = (key: string) => articles.filter((a) => sectionOf(a) === key)
+          const present = [...new Set(articles.map(sectionOf))]
+          const ordered = mergeOrder(sectionOrder, present)
+          const rendered = ordered.filter((k) => !hidden.includes(k) && itemsOf(k).length > 0)
           return (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
               <div className="flex flex-col gap-8">
-              {rendered.map((key, idx) => (
-                <section
-                  key={key}
-                  onDragOver={(e) => {
-                    e.preventDefault()
-                    if (dragKey) setDragOver(key)
-                  }}
-                  onDragLeave={() => setDragOver((d) => (d === key ? null : d))}
-                  onDrop={() => dropOn(key)}
-                  className={cn(
-                    'rounded-lg transition-shadow',
-                    dragOver === key && dragKey && dragKey !== key
-                      ? 'ring-2 ring-accent/50'
-                      : '',
-                  )}
-                >
-                  <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <span
-                        draggable
-                        onDragStart={() => setDragKey(key)}
-                        onDragEnd={() => {
-                          setDragKey(null)
-                          setDragOver(null)
-                        }}
-                        title={t('feed.moveUp')}
-                        className="cursor-grab text-muted-foreground/60 transition-colors hover:text-foreground active:cursor-grabbing"
-                      >
-                        <GripVertical className="h-4 w-4" />
-                      </span>
-                      <h2 className="truncate text-sm font-semibold uppercase tracking-wide text-accent">
-                        {sectionLabel[key]}
-                      </h2>
+                {rendered.map((key, idx) => (
+                  <section
+                    key={key}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      if (dragKey) setDragOver(key)
+                    }}
+                    onDragLeave={() => setDragOver((d) => (d === key ? null : d))}
+                    onDrop={() => dropOn(key)}
+                    className={cn(
+                      'rounded-lg transition-shadow',
+                      dragOver === key && dragKey && dragKey !== key ? 'ring-2 ring-accent/50' : '',
+                    )}
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span
+                          draggable
+                          onDragStart={() => setDragKey(key)}
+                          onDragEnd={() => {
+                            setDragKey(null)
+                            setDragOver(null)
+                          }}
+                          title={t('feed.moveUp')}
+                          className="cursor-grab text-muted-foreground/60 transition-colors hover:text-foreground active:cursor-grabbing"
+                        >
+                          <GripVertical className="h-4 w-4" />
+                        </span>
+                        <h2 className="truncate text-sm font-semibold uppercase tracking-wide text-accent">
+                          {labelOf(key)}
+                        </h2>
+                      </div>
+                      <div className="flex items-center gap-0.5">
+                        <SecBtn
+                          title={t('feed.moveUp')}
+                          disabled={idx === 0}
+                          onClick={() => moveSection(key, -1, rendered)}
+                        >
+                          <ChevronUp className="h-4 w-4" />
+                        </SecBtn>
+                        <SecBtn
+                          title={t('feed.moveDown')}
+                          disabled={idx === rendered.length - 1}
+                          onClick={() => moveSection(key, 1, rendered)}
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </SecBtn>
+                        <SecBtn title={t('feed.hideSection')} onClick={() => hideSection(key)}>
+                          <EyeOff className="h-4 w-4" />
+                        </SecBtn>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-0.5">
-                      <SecBtn
-                        title={t('feed.moveUp')}
-                        disabled={idx === 0}
-                        onClick={() => moveSection(key, -1, rendered)}
-                      >
-                        <ChevronUp className="h-4 w-4" />
-                      </SecBtn>
-                      <SecBtn
-                        title={t('feed.moveDown')}
-                        disabled={idx === rendered.length - 1}
-                        onClick={() => moveSection(key, 1, rendered)}
-                      >
-                        <ChevronDown className="h-4 w-4" />
-                      </SecBtn>
-                      <SecBtn title={t('feed.hideSection')} onClick={() => hideSection(key)}>
-                        <EyeOff className="h-4 w-4" />
-                      </SecBtn>
-                    </div>
-                  </div>
-                  {renderItems(itemsOf(key))}
-                </section>
-              ))}
+                    {renderItems(itemsOf(key))}
+                  </section>
+                ))}
 
-              {hiddenList.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
-                  <span className="text-xs text-muted-foreground">{t('feed.hidden')}:</span>
-                  {hiddenList.map((key) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => showSection(key)}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-                    >
-                      <Eye className="h-3.5 w-3.5" />
-                      {sectionLabel[key]}
-                    </button>
-                  ))}
-                </div>
-              )}
+                {hidden.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
+                    <span className="text-xs text-muted-foreground">{t('feed.hidden')}:</span>
+                    {hidden.map((key) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => showSection(key)}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        {labelOf(key)}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <aside className="hidden lg:block">
                 <TrendsRail />

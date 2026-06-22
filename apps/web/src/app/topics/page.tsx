@@ -19,11 +19,23 @@ type Topic = {
   topic_group?: string | null
 }
 
+const BUILTIN_ORDER = ['actualidad', 'tech', 'sociedad']
+
+type SectionOption = { key: string; label: string }
+
+// El grupo elegido a partir del select de sección.
+function groupFrom(value: string, newValue: string): string | null {
+  if (value === '__new__') return newValue.trim() || null
+  return value || null
+}
+
 export default function TopicsPage() {
   const { t } = useI18n()
   const [topics, setTopics] = useState<Topic[]>([])
   const [name, setName] = useState('')
   const [keywords, setKeywords] = useState('')
+  const [section, setSection] = useState('')
+  const [newSection, setNewSection] = useState('')
   const [busy, setBusy] = useState(false)
 
   const load = () =>
@@ -54,10 +66,12 @@ export default function TopicsPage() {
     await fetch('/api/topics', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ label: name.trim(), keywords: kws }),
+      body: JSON.stringify({ label: name.trim(), keywords: kws, group: groupFrom(section, newSection) }),
     })
     setName('')
     setKeywords('')
+    setSection('')
+    setNewSection('')
     setBusy(false)
     load()
   }
@@ -71,15 +85,38 @@ export default function TopicsPage() {
     })
   }
 
-  const custom = topics.filter((x) => x.kind === 'custom')
-  const inGroup = (g: string) => topics.filter((x) => x.kind === 'curated' && x.topic_group === g)
-  const ungrouped = topics.filter((x) => x.kind === 'curated' && !x.topic_group)
-  const curatedGroups = [
-    { key: 'actualidad', label: t('group.actualidad'), items: inGroup('actualidad') },
-    { key: 'tech', label: t('group.tech'), items: inGroup('tech') },
-    { key: 'sociedad', label: t('group.sociedad'), items: inGroup('sociedad') },
-    { key: 'otros', label: t('topics.curated'), items: ungrouped },
-  ].filter((g) => g.items.length > 0)
+  const builtinLabels: Record<string, string> = {
+    actualidad: t('group.actualidad'),
+    tech: t('group.tech'),
+    sociedad: t('group.sociedad'),
+    custom: t('topics.custom'),
+    general: t('feed.general'),
+  }
+  const labelOf = (key: string) => builtinLabels[key] ?? key
+  const sectionKeyOf = (tp: Topic) =>
+    tp.topic_group ?? (tp.kind === 'custom' ? 'custom' : 'general')
+
+  // Secciones de usuario existentes (para el selector).
+  const userSections = [
+    ...new Set(
+      topics
+        .map((x) => x.topic_group)
+        .filter((g): g is string => !!g && !BUILTIN_ORDER.includes(g)),
+    ),
+  ].sort()
+  const sectionOptions: SectionOption[] = [
+    ...BUILTIN_ORDER.map((k) => ({ key: k, label: labelOf(k) })),
+    ...userSections.map((k) => ({ key: k, label: k })),
+  ]
+
+  // Orden de secciones a renderizar: builtins, secciones de usuario, Tus temas, Otras.
+  const present = [...new Set(topics.map(sectionKeyOf))]
+  const orderedKeys = [
+    ...BUILTIN_ORDER.filter((k) => present.includes(k)),
+    ...userSections.filter((k) => present.includes(k)),
+    ...(present.includes('custom') ? ['custom'] : []),
+    ...(present.includes('general') ? ['general'] : []),
+  ]
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-10">
@@ -90,67 +127,104 @@ export default function TopicsPage() {
       {/* Crear tema propio */}
       <section className="mb-10 rounded-2xl border border-border bg-card p-5">
         <h2 className="mb-3 text-sm font-semibold text-accent">{t('topics.create')}</h2>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t('topics.name')}
-            className="h-10 flex-1 rounded-full border border-input bg-background px-4 text-sm outline-none focus:border-accent"
-          />
-          <input
-            value={keywords}
-            onChange={(e) => setKeywords(e.target.value)}
-            placeholder={t('topics.keywords')}
-            className="h-10 flex-[2] rounded-full border border-input bg-background px-4 text-sm outline-none focus:border-accent"
-          />
-          <Button onClick={create} disabled={busy}>
-            <Plus className="h-4 w-4" />
-            {t('topics.add')}
-          </Button>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t('topics.name')}
+              className="h-10 flex-1 rounded-full border border-input bg-background px-4 text-sm outline-none focus:border-accent"
+            />
+            <input
+              value={keywords}
+              onChange={(e) => setKeywords(e.target.value)}
+              placeholder={t('topics.keywords')}
+              className="h-10 flex-[2] rounded-full border border-input bg-background px-4 text-sm outline-none focus:border-accent"
+            />
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <SectionPicker
+              value={section}
+              newValue={newSection}
+              onValue={setSection}
+              onNewValue={setNewSection}
+              options={sectionOptions}
+            />
+            <Button onClick={create} disabled={busy} className="sm:ml-auto">
+              <Plus className="h-4 w-4" />
+              {t('topics.add')}
+            </Button>
+          </div>
         </div>
       </section>
 
-      {/* Tus temas */}
-      <Group title={t('topics.custom')} count={custom.length}>
-        {custom.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            {t('topics.customEmpty')}
-          </p>
-        ) : (
-          custom.map((tp) => (
-            <TopicRow
-              key={tp.slug}
-              tp={tp}
-              onToggle={toggle}
-              onRemove={remove}
-              onSearched={load}
-              onEdited={load}
-            />
-          ))
-        )}
-      </Group>
-
-      {/* Categorías curadas, agrupadas */}
-      {curatedGroups.map((g) => (
-        <Group key={g.key} title={g.label} count={g.items.length}>
-          {g.items.map((tp) => (
-            <TopicRow key={tp.slug} tp={tp} onToggle={toggle} onSearched={load} />
-          ))}
-        </Group>
-      ))}
+      {/* Temas agrupados por sección */}
+      {orderedKeys.map((key) => {
+        const items = topics.filter((tp) => sectionKeyOf(tp) === key)
+        if (items.length === 0) return null
+        return (
+          <Group key={key} title={labelOf(key)} count={items.length}>
+            {items.map((tp) => (
+              <TopicRow
+                key={tp.slug}
+                tp={tp}
+                onToggle={toggle}
+                onRemove={tp.kind === 'custom' ? remove : undefined}
+                onSearched={load}
+                onEdited={tp.kind === 'custom' ? load : undefined}
+                sectionOptions={sectionOptions}
+              />
+            ))}
+          </Group>
+        )
+      })}
     </div>
   )
 }
 
-function Group({
-  title,
-  count,
-  children,
+function SectionPicker({
+  value,
+  newValue,
+  onValue,
+  onNewValue,
+  options,
 }: {
-  title: string
-  count?: number
-  children: ReactNode
+  value: string
+  newValue: string
+  onValue: (v: string) => void
+  onNewValue: (v: string) => void
+  options: SectionOption[]
 }) {
+  const { t } = useI18n()
+  return (
+    <div className="flex flex-1 gap-2">
+      <select
+        value={value}
+        onChange={(e) => onValue(e.target.value)}
+        className="h-10 rounded-full border border-input bg-background px-4 text-sm outline-none focus:border-accent"
+        aria-label={t('topics.section')}
+      >
+        <option value="">{t('topics.custom')}</option>
+        {options.map((o) => (
+          <option key={o.key} value={o.key}>
+            {o.label}
+          </option>
+        ))}
+        <option value="__new__">＋ {t('topics.newSection')}</option>
+      </select>
+      {value === '__new__' && (
+        <input
+          value={newValue}
+          onChange={(e) => onNewValue(e.target.value)}
+          placeholder={t('topics.sectionName')}
+          className="h-10 flex-1 rounded-full border border-input bg-background px-4 text-sm outline-none focus:border-accent"
+        />
+      )}
+    </div>
+  )
+}
+
+function Group({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
   const [open, setOpen] = useState(true)
   return (
     <section className="mb-6">
@@ -174,18 +248,24 @@ function TopicRow({
   onRemove,
   onSearched,
   onEdited,
+  sectionOptions,
 }: {
   tp: Topic
   onToggle: (slug: string, followed: boolean) => void
   onRemove?: (slug: string) => void
   onSearched?: () => void
   onEdited?: () => void
+  sectionOptions: SectionOption[]
 }) {
   const { t } = useI18n()
   const [searching, setSearching] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editLabel, setEditLabel] = useState(tp.label)
   const [editKeywords, setEditKeywords] = useState((tp.keywords ?? []).join(', '))
+  const initialSection =
+    tp.topic_group && sectionOptions.some((o) => o.key === tp.topic_group) ? tp.topic_group : ''
+  const [editSection, setEditSection] = useState(initialSection)
+  const [editNewSection, setEditNewSection] = useState('')
   const [busy, setBusy] = useState(false)
 
   const search = async () => {
@@ -219,7 +299,12 @@ function TopicRow({
     await fetch('/api/topics', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ slug: tp.slug, label: editLabel.trim(), keywords: kws }),
+      body: JSON.stringify({
+        slug: tp.slug,
+        label: editLabel.trim(),
+        keywords: kws,
+        group: groupFrom(editSection, editNewSection),
+      }),
     })
     setBusy(false)
     setEditing(false)
@@ -228,7 +313,7 @@ function TopicRow({
 
   if (editing) {
     return (
-      <div className="rounded-2xl border border-accent/40 bg-card p-4">
+      <div className="flex flex-col gap-2 rounded-2xl border border-accent/40 bg-card p-4">
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
             value={editLabel}
@@ -242,7 +327,16 @@ function TopicRow({
             placeholder={t('topics.keywords')}
             className="h-10 flex-[2] rounded-full border border-input bg-background px-4 text-sm outline-none focus:border-accent"
           />
-          <Button onClick={saveEdit} disabled={busy}>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <SectionPicker
+            value={editSection}
+            newValue={editNewSection}
+            onValue={setEditSection}
+            onNewValue={setEditNewSection}
+            options={sectionOptions}
+          />
+          <Button onClick={saveEdit} disabled={busy} className="sm:ml-auto">
             {t('topics.add')}
           </Button>
           <Button variant="ghost" onClick={() => setEditing(false)} disabled={busy}>
