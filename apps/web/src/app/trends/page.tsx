@@ -1,6 +1,17 @@
 'use client'
 
-import { ExternalLink, Flame, Settings, TrendingUp } from 'lucide-react'
+import {
+  ExternalLink,
+  Eye,
+  FlaskConical,
+  Flame,
+  Hash,
+  Newspaper,
+  Search,
+  Settings,
+  TrendingUp,
+  type LucideIcon,
+} from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import ShinyText from '@/components/ShinyText'
 import { Badge } from '@/components/ui/badge'
@@ -21,8 +32,20 @@ type Trend = {
 type Ext = { title: string; url: string; info?: string }
 type Topic = { slug: string; label: string; kind: string }
 
-const EXT_SOURCES = ['wikipedia', 'mastodon', 'google'] as const
+const EXT_SOURCES = ['wikipedia', 'mastodon', 'arxiv', 'google'] as const
 type ExtSource = (typeof EXT_SOURCES)[number]
+const DEFAULT_SOURCES: Record<ExtSource, boolean> = {
+  wikipedia: true,
+  mastodon: true,
+  arxiv: true,
+  google: false,
+}
+const SOURCE_ICON: Record<ExtSource, LucideIcon> = {
+  wikipedia: Eye,
+  mastodon: Hash,
+  arxiv: FlaskConical,
+  google: Search,
+}
 
 type TrendPrefs = {
   trendSources?: Record<ExtSource, boolean>
@@ -39,11 +62,7 @@ export default function TrendsPage() {
   const [topic, setTopic] = useState('')
   const [configOpen, setConfigOpen] = useState(false)
 
-  const [sources, setSources] = useState<Record<ExtSource, boolean>>({
-    wikipedia: true,
-    mastodon: true,
-    google: true,
-  })
+  const [sources, setSources] = useState<Record<ExtSource, boolean>>({ ...DEFAULT_SOURCES })
   const [rail, setRail] = useState(true)
   const [window, setWindow] = useState(12)
   const [min, setMin] = useState(2)
@@ -54,7 +73,7 @@ export default function TrendsPage() {
       .then((r) => r.json())
       .then((d: { prefs?: TrendPrefs }) => {
         const p = d.prefs ?? {}
-        if (p.trendSources) setSources({ ...{ wikipedia: true, mastodon: true, google: true }, ...p.trendSources })
+        if (p.trendSources) setSources({ ...DEFAULT_SOURCES, ...p.trendSources })
         if (typeof p.trendsRail === 'boolean') setRail(p.trendsRail)
         if (p.trendWindow) setWindow(p.trendWindow)
         if (p.trendMin) setMin(p.trendMin)
@@ -121,6 +140,7 @@ export default function TrendsPage() {
   const sourceLabel: Record<ExtSource, string> = {
     wikipedia: t('source.wikipedia'),
     mastodon: t('source.mastodon'),
+    arxiv: t('source.arxiv'),
     google: t('source.google'),
   }
 
@@ -229,8 +249,8 @@ export default function TrendsPage() {
         </select>
       </div>
 
-      {/* Nuestras tendencias (cobertura por clustering) */}
-      <Section title={t('trends.ours')}>
+      {/* Noticias: nuestras tendencias (cobertura por clustering) */}
+      <Section title={t('trends.ours')} icon={Newspaper}>
         {trends.length === 0 ? (
           <Empty text={t('trends.empty')} />
         ) : (
@@ -267,9 +287,9 @@ export default function TrendsPage() {
         )}
       </Section>
 
-      {/* Fuentes externas */}
+      {/* Ámbitos externos */}
       {EXT_SOURCES.filter((s) => sources[s]).map((s) => (
-        <Section key={s} title={sourceLabel[s]}>
+        <Section key={s} title={sourceLabel[s]} icon={SOURCE_ICON[s]}>
           {(external[s] ?? []).length === 0 ? (
             <Empty text="…" />
           ) : (
@@ -298,10 +318,19 @@ export default function TrendsPage() {
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  icon: Icon,
+  children,
+}: {
+  title: string
+  icon?: LucideIcon
+  children: React.ReactNode
+}) {
   return (
     <section className="mb-8">
-      <h2 className="mb-3 border-b border-border pb-2 text-sm font-semibold uppercase tracking-wide text-accent">
+      <h2 className="mb-3 flex items-center gap-2 border-b border-border pb-2 text-sm font-semibold uppercase tracking-wide text-accent">
+        {Icon && <Icon className="h-4 w-4" />}
         {title}
       </h2>
       <div className="flex flex-col gap-3">{children}</div>

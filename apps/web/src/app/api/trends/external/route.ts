@@ -58,6 +58,22 @@ async function mastodon(): Promise<TrendItem[]> {
     .map((x) => ({ title: x.title || x.url, url: x.url, info: x.provider_name || undefined }))
 }
 
+// arXiv: investigación reciente (IA / aprendizaje automático / NLP).
+async function arxiv(): Promise<TrendItem[]> {
+  const q = 'cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL'
+  const feed = await parser.parseURL(
+    `https://export.arxiv.org/api/query?search_query=${q}&sortBy=submittedDate&sortOrder=descending&max_results=12`,
+  )
+  return (feed.items ?? [])
+    .slice(0, 12)
+    .map((it) => ({
+      title: (it.title ?? '').replace(/\s+/g, ' ').trim(),
+      url: it.link ?? '',
+      info: 'arXiv',
+    }))
+    .filter((x) => x.url && x.title)
+}
+
 // Google Trends: búsquedas en tendencia hoy (RSS diario por país).
 async function google(lang: string): Promise<TrendItem[]> {
   const geo = lang === 'en' ? 'US' : 'ES'
@@ -89,6 +105,7 @@ export async function GET(req: Request) {
     sources.map(async (src) => {
       if (src === 'wikipedia') out.wikipedia = await cached(`wiki:${lang}`, () => wikipedia(lang))
       else if (src === 'mastodon') out.mastodon = await cached('masto', () => mastodon())
+      else if (src === 'arxiv') out.arxiv = await cached('arxiv', () => arxiv())
       else if (src === 'google') out.google = await cached(`gt:${lang}`, () => google(lang))
     }),
   )
