@@ -74,21 +74,35 @@ async function arxiv(): Promise<TrendItem[]> {
     .filter((x) => x.url && x.title)
 }
 
-// Google Trends: búsquedas en tendencia hoy (RSS diario por país).
+// Google Trends: búsquedas en tendencia hoy (RSS por país). URL nueva
+// (/trending/rss); los campos ht:* son namespaced → parseo manual.
+function decodeXml(s: string): string {
+  return s
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+}
 async function google(lang: string): Promise<TrendItem[]> {
   const geo = lang === 'en' ? 'US' : 'ES'
-  const feed = await parser.parseURL(
-    `https://trends.google.com/trends/trendingsearches/daily/rss?geo=${geo}`,
-  )
-  return (feed.items ?? [])
+  const res = await fetch(`https://trends.google.com/trending/rss?geo=${geo}`, {
+    headers: { 'user-agent': UA },
+    signal: AbortSignal.timeout(12000),
+  })
+  if (!res.ok) return []
+  const xml = await res.text()
+  const blocks = xml.match(/<item>[\s\S]*?<\/item>/g) ?? []
+  return blocks
     .slice(0, 12)
-    .map((it) => {
-      const term = (it.title ?? '').trim()
-      const traffic = (it as Record<string, unknown>)['ht:approx_traffic'] as string | undefined
+    .map((b) => {
+      const term = decodeXml((b.match(/<title>([\s\S]*?)<\/title>/)?.[1] ?? '').trim())
+      const traffic = (b.match(/<ht:approx_traffic>([^<]*)<\/ht:approx_traffic>/)?.[1] ?? '').trim()
+      const newsUrl = b.match(/<ht:news_item_url>([^<]*)<\/ht:news_item_url>/)?.[1]?.trim()
       return {
         title: term,
-        url: it.link || `https://www.google.com/search?q=${encodeURIComponent(term)}`,
-        info: traffic,
+        url: newsUrl || `https://www.google.com/search?q=${encodeURIComponent(term)}`,
+        info: traffic || undefined,
       }
     })
     .filter((x) => x.title)

@@ -38,7 +38,7 @@ const DEFAULT_SOURCES: Record<ExtSource, boolean> = {
   wikipedia: true,
   mastodon: true,
   arxiv: true,
-  google: false,
+  google: true,
 }
 const SOURCE_ICON: Record<ExtSource, LucideIcon> = {
   wikipedia: Eye,
