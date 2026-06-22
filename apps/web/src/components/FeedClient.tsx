@@ -37,6 +37,7 @@ type Prefs = {
   sectionOrder?: string[]
   hidden?: string[]
   chipsOpen?: boolean
+  trendsRail?: boolean
 }
 
 const VIEWS: {
@@ -80,6 +81,7 @@ export function FeedClient() {
   const [sectionOrder, setSectionOrder] = useState<string[]>([...DEFAULT_SECTION_ORDER])
   const [hidden, setHidden] = useState<string[]>([])
   const [chipsOpen, setChipsOpen] = useState(false)
+  const [trendsRail, setTrendsRail] = useState(true)
   const [dragKey, setDragKey] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
 
@@ -87,6 +89,7 @@ export function FeedClient() {
     if (p.view) setView(p.view)
     if (typeof p.sectioned === 'boolean') setSectioned(p.sectioned)
     if (typeof p.chipsOpen === 'boolean') setChipsOpen(p.chipsOpen)
+    if (typeof p.trendsRail === 'boolean') setTrendsRail(p.trendsRail)
     if (Array.isArray(p.sectionOrder)) setSectionOrder(p.sectionOrder.filter((k) => typeof k === 'string'))
     if (Array.isArray(p.hidden)) setHidden(p.hidden.filter((k) => typeof k === 'string'))
   }
@@ -403,7 +406,7 @@ export function FeedClient() {
           const ordered = mergeOrder(sectionOrder, present)
           const rendered = ordered.filter((k) => !hidden.includes(k) && itemsOf(k).length > 0)
           return (
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
+            <div className={cn('grid grid-cols-1 gap-6', trendsRail && 'lg:grid-cols-[1fr_300px]')}>
               <div className="flex flex-col gap-8">
                 {rendered.map((key, idx) => (
                   <section
@@ -478,14 +481,16 @@ export function FeedClient() {
                   </div>
                 )}
               </div>
-              <aside className="hidden lg:block">
-                <TrendsRail />
-              </aside>
+              {trendsRail && (
+                <aside className="hidden lg:block">
+                  <TrendsRail />
+                </aside>
+              )}
             </div>
           )
         })()
       ) : view === 'portada' ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
+        <div className={cn('grid grid-cols-1 gap-6', trendsRail && 'lg:grid-cols-[1fr_300px]')}>
           <div>
             <LeadCard article={articles[0]} onDiscard={discard} />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -494,9 +499,11 @@ export function FeedClient() {
               ))}
             </div>
           </div>
-          <aside className="hidden lg:block">
-            <TrendsRail />
-          </aside>
+          {trendsRail && (
+            <aside className="hidden lg:block">
+              <TrendsRail />
+            </aside>
+          )}
         </div>
       ) : (
         renderItems(articles)

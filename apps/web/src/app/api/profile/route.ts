@@ -35,7 +35,11 @@ export async function POST(req: Request) {
   const isNew = !id
   if (!id) id = await createProfile()
   const body = (await req.json()) as { prefs?: Record<string, unknown> }
-  await query(`UPDATE profiles SET prefs = $2 WHERE id = $1`, [id, JSON.stringify(body.prefs ?? {})])
+  // Fusiona (no reemplaza) para no pisar prefs de otras partes de la UI.
+  await query(`UPDATE profiles SET prefs = prefs || $2::jsonb WHERE id = $1`, [
+    id,
+    JSON.stringify(body.prefs ?? {}),
+  ])
   const res = NextResponse.json({ ok: true })
   if (isNew) res.cookies.set(PROFILE_COOKIE, id, cookieOptions)
   return res
