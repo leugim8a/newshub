@@ -222,14 +222,23 @@ export function FeedClient() {
   const labelOf = (key: string) => builtinLabels[key] ?? key
 
   const slugInfo = new Map(topics.map((tp) => [tp.slug, tp]))
+  // Prioridad: sección de un tema PROPIO del usuario > "Tus temas" > categoría curada > Otras.
+  // Así una noticia de un tema tuyo (aunque también case una categoría) va a tu sección.
   const sectionOf = (a: Article): string => {
-    let custom = false
+    let userGroup: string | undefined
+    let customNoGroup = false
+    let curatedGroup: string | undefined
     for (const s of a.topics) {
       const info = slugInfo.get(s)
-      if (info?.topic_group) return info.topic_group
-      if (info && info.kind === 'custom') custom = true
+      if (!info) continue
+      if (info.kind === 'custom') {
+        if (info.topic_group) userGroup = userGroup ?? info.topic_group
+        else customNoGroup = true
+      } else if (info.topic_group) {
+        curatedGroup = curatedGroup ?? info.topic_group
+      }
     }
-    return custom ? 'custom' : 'general'
+    return userGroup ?? (customNoGroup ? 'custom' : (curatedGroup ?? 'general'))
   }
   const topicSectionKey = (tp: Topic) => tp.topic_group ?? (tp.kind === 'custom' ? 'custom' : 'general')
 
