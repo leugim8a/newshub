@@ -6,6 +6,7 @@ import {
   ChevronUp,
   Eye,
   EyeOff,
+  GripVertical,
   ImageIcon,
   LayoutGrid,
   LayoutPanelTop,
@@ -44,6 +45,13 @@ const VIEWS: {
 const SECTION_ORDER = ['actualidad', 'tech', 'sociedad', 'custom', 'general'] as const
 type SectionKey = (typeof SECTION_ORDER)[number]
 
+type Prefs = {
+  view?: View
+  sectioned?: boolean
+  sectionOrder?: SectionKey[]
+  hidden?: SectionKey[]
+}
+
 // Asegura que el orden guardado contiene exactamente las secciones válidas.
 function normalizeOrder(arr: unknown): SectionKey[] {
   const valid = Array.isArray(arr)
@@ -63,24 +71,63 @@ export function FeedClient() {
   const [sectioned, setSectioned] = useState(false)
   const [sectionOrder, setSectionOrder] = useState<SectionKey[]>([...SECTION_ORDER])
   const [hidden, setHidden] = useState<SectionKey[]>([])
+  const [dragKey, setDragKey] = useState<SectionKey | null>(null)
+  const [dragOver, setDragOver] = useState<SectionKey | null>(null)
+
+  const applyPrefs = (p: Prefs) => {
+    if (p.view) setView(p.view)
+    if (typeof p.sectioned === 'boolean') setSectioned(p.sectioned)
+    if (p.sectionOrder) setSectionOrder(normalizeOrder(p.sectionOrder))
+    if (Array.isArray(p.hidden)) {
+      setHidden(p.hidden.filter((k) => (SECTION_ORDER as readonly string[]).includes(k)) as SectionKey[])
+    }
+  }
 
   useEffect(() => {
-    const v = localStorage.getItem('newshub.view') as View | null
-    if (v) setView(v)
-    setSectioned(localStorage.getItem('newshub.sectioned') === '1')
+    // 1) localStorage (instantáneo)
     try {
-      const so = localStorage.getItem('newshub.sectionOrder')
-      if (so) setSectionOrder(normalizeOrder(JSON.parse(so)))
-      const hs = localStorage.getItem('newshub.hiddenSections')
-      const arr = hs ? JSON.parse(hs) : []
-      if (Array.isArray(arr)) {
-        setHidden(arr.filter((k) => (SECTION_ORDER as readonly string[]).includes(k)))
-      }
+      const local = JSON.parse(localStorage.getItem('newshub.prefs') || 'null')
+      if (local) applyPrefs(local)
     } catch {
       /* prefs corruptas → defaults */
     }
+    // 2) perfil en BD (cross-device) sobrescribe si tiene prefs
+    fetch('/api/profile')
+      .then((r) => r.json())
+      .then((d: { prefs?: Prefs }) => {
+        if (d.prefs && Object.keys(d.prefs).length > 0) {
+          applyPrefs(d.prefs)
+          localStorage.setItem('newshub.prefs', JSON.stringify(d.prefs))
+        }
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Persiste un set completo de prefs en localStorage y en el perfil (BD).
+  const persist = (p: Prefs) => {
+    localStorage.setItem('newshub.prefs', JSON.stringify(p))
+    fetch('/api/profile', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prefs: p }),
+    }).catch(() => {})
+  }
+  const snapshot = (over: Prefs): Prefs => ({ view, sectioned, sectionOrder, hidden, ...over })
+
+  const changeView = (v: View) => {
+    setView(v)
+    persist(snapshot({ view: v }))
+  }
+  const toggleSections = () => {
+    const ns = !sectioned
+    setSectioned(ns)
+    persist(snapshot({ sectioned: ns }))
+  }
+  const applyOrder = (next: SectionKey[]) => {
+    setSectionOrder(next)
+    persist(snapshot({ sectionOrder: next }))
+  }
   const moveSection = (key: SectionKey, dir: -1 | 1, rendered: SectionKey[]) => {
     const i = rendered.indexOf(key)
     const j = i + dir
@@ -89,26 +136,22 @@ export function FeedClient() {
     const a = next.indexOf(key)
     const b = next.indexOf(rendered[j])
     ;[next[a], next[b]] = [next[b], next[a]]
-    setSectionOrder(next)
-    localStorage.setItem('newshub.sectionOrder', JSON.stringify(next))
+    applyOrder(next)
   }
-  const setHiddenPersist = (h: SectionKey[]) => {
+  const dropOn = (target: SectionKey) => {
+    setDragOver(null)
+    if (!dragKey || dragKey === target) return
+    const next = sectionOrder.filter((k) => k !== dragKey)
+    next.splice(next.indexOf(target), 0, dragKey)
+    setDragKey(null)
+    applyOrder(next)
+  }
+  const setHiddenP = (h: SectionKey[]) => {
     setHidden(h)
-    localStorage.setItem('newshub.hiddenSections', JSON.stringify(h))
+    persist(snapshot({ hidden: h }))
   }
-  const hideSection = (key: SectionKey) => setHiddenPersist([...hidden, key])
-  const showSection = (key: SectionKey) => setHiddenPersist(hidden.filter((k) => k !== key))
-
-  const changeView = (v: View) => {
-    setView(v)
-    localStorage.setItem('newshub.view', v)
-  }
-  const toggleSections = () => {
-    setSectioned((s) => {
-      localStorage.setItem('newshub.sectioned', s ? '0' : '1')
-      return !s
-    })
-  }
+  const hideSection = (key: SectionKey) => setHiddenP([...hidden, key])
+  const showSection = (key: SectionKey) => setHiddenP(hidden.filter((k) => k !== key))
 
   const loadFeed = useCallback(async (sel: string | null) => {
     const url = sel === 'all' ? '/api/feed?all=1' : sel ? `/api/feed?topic=${sel}` : '/api/feed'
@@ -309,11 +352,39 @@ export function FeedClient() {
           return (
             <div className="flex flex-col gap-8">
               {rendered.map((key, idx) => (
-                <section key={key}>
+                <section
+                  key={key}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    if (dragKey) setDragOver(key)
+                  }}
+                  onDragLeave={() => setDragOver((d) => (d === key ? null : d))}
+                  onDrop={() => dropOn(key)}
+                  className={cn(
+                    'rounded-lg transition-shadow',
+                    dragOver === key && dragKey && dragKey !== key
+                      ? 'ring-2 ring-accent/50'
+                      : '',
+                  )}
+                >
                   <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2">
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-accent">
-                      {sectionLabel[key]}
-                    </h2>
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span
+                        draggable
+                        onDragStart={() => setDragKey(key)}
+                        onDragEnd={() => {
+                          setDragKey(null)
+                          setDragOver(null)
+                        }}
+                        title={t('feed.moveUp')}
+                        className="cursor-grab text-muted-foreground/60 transition-colors hover:text-foreground active:cursor-grabbing"
+                      >
+                        <GripVertical className="h-4 w-4" />
+                      </span>
+                      <h2 className="truncate text-sm font-semibold uppercase tracking-wide text-accent">
+                        {sectionLabel[key]}
+                      </h2>
+                    </div>
                     <div className="flex items-center gap-0.5">
                       <SecBtn
                         title={t('feed.moveUp')}
