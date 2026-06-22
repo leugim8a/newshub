@@ -1,7 +1,17 @@
 'use client'
 
-import { AlignJustify, ImageIcon, LayoutGrid, LayoutPanelTop, Newspaper } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import {
+  AlignJustify,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  EyeOff,
+  ImageIcon,
+  LayoutGrid,
+  LayoutPanelTop,
+  Newspaper,
+} from 'lucide-react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ArticleCard, type Article } from '@/components/ArticleCard'
 import { NotificationBell } from '@/components/NotificationBell'
 import { HeadlineCard, LeadCard, TitularRow, TrendsRail } from '@/components/Portada'
@@ -34,6 +44,15 @@ const VIEWS: {
 const SECTION_ORDER = ['actualidad', 'tech', 'sociedad', 'custom', 'general'] as const
 type SectionKey = (typeof SECTION_ORDER)[number]
 
+// Asegura que el orden guardado contiene exactamente las secciones válidas.
+function normalizeOrder(arr: unknown): SectionKey[] {
+  const valid = Array.isArray(arr)
+    ? (arr.filter((k) => (SECTION_ORDER as readonly string[]).includes(k)) as SectionKey[])
+    : []
+  const missing = SECTION_ORDER.filter((k) => !valid.includes(k))
+  return [...valid, ...missing]
+}
+
 export function FeedClient() {
   const { t, lang, setLang } = useI18n()
   const [articles, setArticles] = useState<Article[]>([])
@@ -42,12 +61,43 @@ export function FeedClient() {
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<View>('portada')
   const [sectioned, setSectioned] = useState(false)
+  const [sectionOrder, setSectionOrder] = useState<SectionKey[]>([...SECTION_ORDER])
+  const [hidden, setHidden] = useState<SectionKey[]>([])
 
   useEffect(() => {
     const v = localStorage.getItem('newshub.view') as View | null
     if (v) setView(v)
     setSectioned(localStorage.getItem('newshub.sectioned') === '1')
+    try {
+      const so = localStorage.getItem('newshub.sectionOrder')
+      if (so) setSectionOrder(normalizeOrder(JSON.parse(so)))
+      const hs = localStorage.getItem('newshub.hiddenSections')
+      const arr = hs ? JSON.parse(hs) : []
+      if (Array.isArray(arr)) {
+        setHidden(arr.filter((k) => (SECTION_ORDER as readonly string[]).includes(k)))
+      }
+    } catch {
+      /* prefs corruptas → defaults */
+    }
   }, [])
+
+  const moveSection = (key: SectionKey, dir: -1 | 1, rendered: SectionKey[]) => {
+    const i = rendered.indexOf(key)
+    const j = i + dir
+    if (j < 0 || j >= rendered.length) return
+    const next = [...sectionOrder]
+    const a = next.indexOf(key)
+    const b = next.indexOf(rendered[j])
+    ;[next[a], next[b]] = [next[b], next[a]]
+    setSectionOrder(next)
+    localStorage.setItem('newshub.sectionOrder', JSON.stringify(next))
+  }
+  const setHiddenPersist = (h: SectionKey[]) => {
+    setHidden(h)
+    localStorage.setItem('newshub.hiddenSections', JSON.stringify(h))
+  }
+  const hideSection = (key: SectionKey) => setHiddenPersist([...hidden, key])
+  const showSection = (key: SectionKey) => setHiddenPersist(hidden.filter((k) => k !== key))
 
   const changeView = (v: View) => {
     setView(v)
@@ -250,20 +300,63 @@ export function FeedClient() {
           {t('feed.empty')}
         </p>
       ) : showSections ? (
-        <div className="flex flex-col gap-8">
-          {SECTION_ORDER.map((key) => {
-            const items = articles.filter((a) => sectionOf(a) === key)
-            if (items.length === 0) return null
-            return (
-              <section key={key}>
-                <h2 className="mb-3 border-b border-border pb-2 text-sm font-semibold uppercase tracking-wide text-accent">
-                  {sectionLabel[key]}
-                </h2>
-                {renderItems(items)}
-              </section>
-            )
-          })}
-        </div>
+        (() => {
+          const itemsOf = (key: SectionKey) => articles.filter((a) => sectionOf(a) === key)
+          const rendered = sectionOrder.filter((k) => !hidden.includes(k) && itemsOf(k).length > 0)
+          const hiddenWithItems = sectionOrder.filter(
+            (k) => hidden.includes(k) && itemsOf(k).length > 0,
+          )
+          return (
+            <div className="flex flex-col gap-8">
+              {rendered.map((key, idx) => (
+                <section key={key}>
+                  <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2">
+                    <h2 className="text-sm font-semibold uppercase tracking-wide text-accent">
+                      {sectionLabel[key]}
+                    </h2>
+                    <div className="flex items-center gap-0.5">
+                      <SecBtn
+                        title={t('feed.moveUp')}
+                        disabled={idx === 0}
+                        onClick={() => moveSection(key, -1, rendered)}
+                      >
+                        <ChevronUp className="h-4 w-4" />
+                      </SecBtn>
+                      <SecBtn
+                        title={t('feed.moveDown')}
+                        disabled={idx === rendered.length - 1}
+                        onClick={() => moveSection(key, 1, rendered)}
+                      >
+                        <ChevronDown className="h-4 w-4" />
+                      </SecBtn>
+                      <SecBtn title={t('feed.hideSection')} onClick={() => hideSection(key)}>
+                        <EyeOff className="h-4 w-4" />
+                      </SecBtn>
+                    </div>
+                  </div>
+                  {renderItems(itemsOf(key))}
+                </section>
+              ))}
+
+              {hiddenWithItems.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
+                  <span className="text-xs text-muted-foreground">{t('feed.hidden')}:</span>
+                  {hiddenWithItems.map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => showSection(key)}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      {sectionLabel[key]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })()
       ) : view === 'portada' ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
           <div>
@@ -282,6 +375,31 @@ export function FeedClient() {
         renderItems(articles)
       )}
     </div>
+  )
+}
+
+function SecBtn({
+  title,
+  disabled,
+  onClick,
+  children,
+}: {
+  title: string
+  disabled?: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+    >
+      {children}
+    </button>
   )
 }
 
