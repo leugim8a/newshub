@@ -3,6 +3,7 @@
 import { Globe, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import ShinyText from '@/components/ShinyText'
+import { DigestSubscribe } from '@/components/DigestSubscribe'
 import { MuteManager } from '@/components/MuteManager'
 import { NotificationBell } from '@/components/NotificationBell'
 import { Button } from '@/components/ui/button'
@@ -106,6 +107,8 @@ export default function SettingsPage() {
           <span className="font-medium">{t('push.enable')}</span>
           <NotificationBell />
         </div>
+
+        <DigestSubscribe />
 
         <MuteManager />
       </div>
