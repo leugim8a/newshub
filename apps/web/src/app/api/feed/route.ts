@@ -53,6 +53,8 @@ export async function GET(req: Request) {
             COALESCE(a.published_at, a.ingested_at) AS published_at,
             s.name AS source_name,
             c.size AS cluster_size, c.source_count AS cluster_sources,
+            (SELECT array_agg(DISTINCT s2.name) FROM articles a2 JOIN sources s2 ON s2.id = a2.source_id
+             WHERE a.cluster_id IS NOT NULL AND a2.cluster_id = a.cluster_id) AS cluster_source_names,
             COALESCE(array_agg(DISTINCT t.slug) FILTER (WHERE t.slug IS NOT NULL), '{}') AS topics
      FROM articles a
      LEFT JOIN sources s ON s.id = a.source_id

@@ -1,6 +1,7 @@
 'use client'
 
 import { ExternalLink, X } from 'lucide-react'
+import { BiasBar } from '@/components/BiasBar'
 import { ClusterBadge } from '@/components/ClusterBadge'
 import { Badge } from '@/components/ui/badge'
 import { relativeTime, useI18n } from '@/lib/i18n'
@@ -18,6 +19,7 @@ export type Article = {
   cluster_id?: number | null
   cluster_size?: number | null
   cluster_sources?: number | null
+  cluster_source_names?: (string | null)[] | null
 }
 
 export function ArticleCard({
@@ -84,6 +86,7 @@ export function ArticleCard({
           <span>·</span>
           <span>{relativeTime(article.published_at, lang)}</span>
           <span className="ml-auto" />
+          <BiasBar sources={article.cluster_source_names} compact />
           <ClusterBadge clusterId={article.cluster_id} sources={article.cluster_sources} />
           <ExternalLink className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
         </div>

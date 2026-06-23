@@ -3,6 +3,7 @@
 import { ExternalLink, Flame, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { Article } from '@/components/ArticleCard'
+import { BiasBar } from '@/components/BiasBar'
 import { ClusterBadge } from '@/components/ClusterBadge'
 import { relativeTime, useI18n } from '@/lib/i18n'
 
@@ -38,6 +39,7 @@ function Meta({ article }: { article: Article }) {
         </>
       )}
       <span className="ml-auto" />
+      <BiasBar sources={article.cluster_source_names} compact />
       <ClusterBadge clusterId={article.cluster_id} sources={article.cluster_sources} />
     </div>
   )

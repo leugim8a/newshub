@@ -4,6 +4,7 @@ import { ArrowLeft, ExternalLink, Layers, Pause, Volume2 } from 'lucide-react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
+import { BiasBar } from '@/components/BiasBar'
 import { Button } from '@/components/ui/button'
 import { relativeTime, useI18n } from '@/lib/i18n'
 
@@ -82,6 +83,11 @@ export default function StoryPage() {
             </span>
           </div>
           <h1 className="mb-4 text-2xl font-semibold leading-tight tracking-tight">{title}</h1>
+
+          {/* Barra de sesgo de las fuentes */}
+          <div className="mb-5">
+            <BiasBar sources={data.articles.map((a) => a.source_name)} />
+          </div>
 
           {/* Resumen IA */}
           <div className="mb-6 rounded-2xl border border-border bg-card p-5">
