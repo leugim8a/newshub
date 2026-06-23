@@ -39,6 +39,29 @@ export async function GET(req: Request) {
     conds.push(
       `a.id NOT IN (SELECT article_id FROM discarded_articles WHERE profile_id = $${params.length})`,
     )
+
+    // Silenciados: ocultar artículos cuya fuente está silenciada o cuyo título
+    // contiene una palabra silenciada por el perfil.
+    params.push(profileId)
+    const mp = params.length
+    conds.push(
+      `s.name NOT IN (SELECT value FROM mute_filters WHERE profile_id = $${mp} AND kind = 'source')`,
+    )
+    conds.push(
+      `NOT EXISTS (SELECT 1 FROM mute_filters mf WHERE mf.profile_id = $${mp}
+         AND mf.kind = 'keyword' AND a.title ILIKE '%' || mf.value || '%')`,
+    )
+  }
+
+  // saved flag por perfil (LEFT JOIN a saved_articles)
+  let savedSelect = 'false AS saved'
+  let savedJoin = ''
+  let savedGroup = ''
+  if (profileId) {
+    params.push(profileId)
+    savedSelect = '(sv.article_id IS NOT NULL) AS saved'
+    savedJoin = `LEFT JOIN saved_articles sv ON sv.article_id = a.id AND sv.profile_id = $${params.length}`
+    savedGroup = ', sv.article_id'
   }
 
   const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : ''
@@ -55,14 +78,16 @@ export async function GET(req: Request) {
             c.size AS cluster_size, c.source_count AS cluster_sources,
             (SELECT array_agg(DISTINCT s2.name) FROM articles a2 JOIN sources s2 ON s2.id = a2.source_id
              WHERE a.cluster_id IS NOT NULL AND a2.cluster_id = a.cluster_id) AS cluster_source_names,
+            ${savedSelect},
             COALESCE(array_agg(DISTINCT t.slug) FILTER (WHERE t.slug IS NOT NULL), '{}') AS topics
      FROM articles a
      LEFT JOIN sources s ON s.id = a.source_id
      LEFT JOIN clusters c ON c.id = a.cluster_id
+     ${savedJoin}
      LEFT JOIN article_topics at ON at.article_id = a.id
      LEFT JOIN topics t ON t.id = at.topic_id
      ${where}
-     GROUP BY a.id, a.source_id, s.name, c.size, c.source_count
+     GROUP BY a.id, a.source_id, s.name, c.size, c.source_count${savedGroup}
      ORDER BY ROW_NUMBER() OVER (
                 PARTITION BY a.source_id
                 ORDER BY COALESCE(a.published_at, a.ingested_at) DESC
