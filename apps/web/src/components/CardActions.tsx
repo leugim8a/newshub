@@ -5,7 +5,19 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useI18n } from '@/lib/i18n'
 
-type Summary = { summary: string | null; bullets: string[] }
+type Summary = { summary: string | null; bullets: string[]; lang?: 'es' | 'en' }
+
+// Elige una voz instalada que case con el idioma (p. ej. en-US, en-GB → 'en').
+function pickVoice(bcp: string): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis?.getVoices() ?? []
+  if (voices.length === 0) return null
+  const base = bcp.split('-')[0]
+  return (
+    voices.find((v) => v.lang === bcp) ??
+    voices.find((v) => v.lang.toLowerCase().startsWith(base)) ??
+    null
+  )
+}
 
 // Acciones por tarjeta: resumir (IA bajo demanda) · leer aquí (reader view) · guardar.
 export function CardActions({
@@ -77,9 +89,16 @@ export function CardActions({
     }
     const text = [data?.summary, ...(data?.bullets ?? [])].filter(Boolean).join('. ')
     if (!text) return
+    // El idioma de la VOZ debe ser el del resumen (= idioma del artículo), no el de
+    // la interfaz: un resumen en inglés con voz española suena fatal.
+    const spoken = data?.lang ?? lang
+    const bcp = spoken === 'en' ? 'en-US' : 'es-ES'
     const u = new SpeechSynthesisUtterance(text)
-    u.lang = lang === 'en' ? 'en-US' : 'es-ES'
+    u.lang = bcp
+    const v = pickVoice(bcp)
+    if (v) u.voice = v
     u.onend = () => setSpeaking(false)
+    window.speechSynthesis.cancel()
     window.speechSynthesis.speak(u)
     setSpeaking(true)
   }

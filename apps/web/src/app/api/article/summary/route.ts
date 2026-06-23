@@ -24,19 +24,21 @@ export async function GET(req: Request) {
   if (rows.length === 0) return NextResponse.json({ error: 'no encontrado' }, { status: 404 })
   const a = rows[0]
 
+  const lang = a.lang === 'en' ? 'en' : 'es'
+
   if (a.ai_summary) {
-    return NextResponse.json({ summary: a.ai_summary, bullets: a.ai_bullets ?? [], cached: true })
+    return NextResponse.json({ summary: a.ai_summary, bullets: a.ai_bullets ?? [], lang, cached: true })
   }
   if (!llmEnabled()) {
-    return NextResponse.json({ summary: null, bullets: [], cached: false })
+    return NextResponse.json({ summary: null, bullets: [], lang, cached: false })
   }
 
-  const gen = await summarizeArticle(a.title, a.summary, a.lang === 'en' ? 'en' : 'es')
-  if (!gen) return NextResponse.json({ summary: null, bullets: [], cached: false })
+  const gen = await summarizeArticle(a.title, a.summary, lang)
+  if (!gen) return NextResponse.json({ summary: null, bullets: [], lang, cached: false })
 
   await query(
     `UPDATE articles SET ai_summary = $2, ai_bullets = $3, ai_summarized_at = now() WHERE id = $1`,
     [id, gen.summary, JSON.stringify(gen.bullets)],
   )
-  return NextResponse.json({ summary: gen.summary, bullets: gen.bullets, cached: false })
+  return NextResponse.json({ summary: gen.summary, bullets: gen.bullets, lang, cached: false })
 }
