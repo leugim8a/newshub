@@ -16,7 +16,13 @@ export async function gemini(prompt: string, maxTokens = 600): Promise<string | 
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: maxTokens },
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: maxTokens,
+            // gemini-2.5-flash es "thinking": sin esto el razonamiento agota los
+            // tokens y devuelve texto vacío/truncado.
+            thinkingConfig: { thinkingBudget: 0 },
+          },
         }),
         signal: AbortSignal.timeout(30000),
       },
