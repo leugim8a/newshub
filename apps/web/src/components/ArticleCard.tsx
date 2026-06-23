@@ -2,6 +2,7 @@
 
 import { ExternalLink, X } from 'lucide-react'
 import { BiasBar } from '@/components/BiasBar'
+import { CardActions } from '@/components/CardActions'
 import { ClusterBadge } from '@/components/ClusterBadge'
 import { Badge } from '@/components/ui/badge'
 import { relativeTime, useI18n } from '@/lib/i18n'
@@ -20,6 +21,7 @@ export type Article = {
   cluster_size?: number | null
   cluster_sources?: number | null
   cluster_source_names?: (string | null)[] | null
+  saved?: boolean
 }
 
 export function ArticleCard({
@@ -88,7 +90,7 @@ export function ArticleCard({
           <span className="ml-auto" />
           <BiasBar sources={article.cluster_source_names} compact />
           <ClusterBadge clusterId={article.cluster_id} sources={article.cluster_sources} />
-          <ExternalLink className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+          <CardActions articleId={article.id} saved={article.saved} />
         </div>
         <h3 className="line-clamp-2 font-medium leading-snug text-card-foreground transition-colors group-hover:text-accent">
           {article.title}

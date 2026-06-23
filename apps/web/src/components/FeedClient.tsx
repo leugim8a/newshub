@@ -169,7 +169,14 @@ export function FeedClient() {
   const showSection = (key: string) => setHiddenP(hidden.filter((k) => k !== key))
 
   const loadFeed = useCallback(async (sel: string | null) => {
-    const url = sel === 'all' ? '/api/feed?all=1' : sel ? `/api/feed?topic=${sel}` : '/api/feed'
+    const url =
+      sel === 'saved'
+        ? '/api/saved'
+        : sel === 'all'
+          ? '/api/feed?all=1'
+          : sel
+            ? `/api/feed?topic=${sel}`
+            : '/api/feed'
     const res = await fetch(url)
     const data = (await res.json()) as { articles: Article[] }
     setArticles(data.articles)
@@ -327,6 +334,7 @@ export function FeedClient() {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Chip label={t('topics.following')} active={active === null} onClick={() => setActive(null)} />
         <Chip label={t('feed.all')} active={active === 'all'} onClick={() => setActive('all')} />
+        <Chip label={t('feed.savedTab')} active={active === 'saved'} onClick={() => setActive('saved')} />
         <button
           type="button"
           onClick={toggleChips}
