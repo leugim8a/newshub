@@ -52,13 +52,15 @@ export async function GET(req: Request) {
     `SELECT a.id, a.url, a.title, a.summary, a.image_url, a.lang, a.cluster_id,
             COALESCE(a.published_at, a.ingested_at) AS published_at,
             s.name AS source_name,
+            c.size AS cluster_size, c.source_count AS cluster_sources,
             COALESCE(array_agg(DISTINCT t.slug) FILTER (WHERE t.slug IS NOT NULL), '{}') AS topics
      FROM articles a
      LEFT JOIN sources s ON s.id = a.source_id
+     LEFT JOIN clusters c ON c.id = a.cluster_id
      LEFT JOIN article_topics at ON at.article_id = a.id
      LEFT JOIN topics t ON t.id = at.topic_id
      ${where}
-     GROUP BY a.id, a.source_id, s.name
+     GROUP BY a.id, a.source_id, s.name, c.size, c.source_count
      ORDER BY ROW_NUMBER() OVER (
                 PARTITION BY a.source_id
                 ORDER BY COALESCE(a.published_at, a.ingested_at) DESC

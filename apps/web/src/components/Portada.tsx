@@ -3,6 +3,7 @@
 import { ExternalLink, Flame, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { Article } from '@/components/ArticleCard'
+import { ClusterBadge } from '@/components/ClusterBadge'
 import { relativeTime, useI18n } from '@/lib/i18n'
 
 function DiscardButton({ id, onDiscard }: { id: number; onDiscard?: (id: number) => void }) {
@@ -36,6 +37,8 @@ function Meta({ article }: { article: Article }) {
           <span className="text-accent">#{article.topics[0]}</span>
         </>
       )}
+      <span className="ml-auto" />
+      <ClusterBadge clusterId={article.cluster_id} sources={article.cluster_sources} />
     </div>
   )
 }
@@ -141,6 +144,7 @@ export function TitularRow({
           {article.topics[0] ? ` · #${article.topics[0]}` : ''}
         </span>
       </div>
+      <ClusterBadge clusterId={article.cluster_id} sources={article.cluster_sources} />
       <DiscardButton id={article.id} onDiscard={onDiscard} />
     </a>
   )

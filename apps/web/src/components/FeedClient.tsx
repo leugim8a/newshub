@@ -288,6 +288,17 @@ export function FeedClient() {
     )
   }
 
+  // Colapsar duplicados: una sola tarjeta por historia (cluster).
+  const shown = (() => {
+    const seen = new Set<number>()
+    return articles.filter((a) => {
+      if (!a.cluster_id) return true
+      if (seen.has(a.cluster_id)) return false
+      seen.add(a.cluster_id)
+      return true
+    })
+  })()
+
   const showSections = sectioned && (active === null || active === 'all')
   const wide = view === 'portada' || view === 'mosaic' || showSections
 
@@ -401,8 +412,8 @@ export function FeedClient() {
         </p>
       ) : showSections ? (
         (() => {
-          const itemsOf = (key: string) => articles.filter((a) => sectionOf(a) === key)
-          const present = [...new Set(articles.map(sectionOf))]
+          const itemsOf = (key: string) => shown.filter((a) => sectionOf(a) === key)
+          const present = [...new Set(shown.map(sectionOf))]
           const ordered = mergeOrder(sectionOrder, present)
           const rendered = ordered.filter((k) => !hidden.includes(k) && itemsOf(k).length > 0)
           return (
@@ -492,9 +503,9 @@ export function FeedClient() {
       ) : view === 'portada' ? (
         <div className={cn('grid grid-cols-1 gap-6', trendsRail && 'lg:grid-cols-[1fr_300px]')}>
           <div>
-            <LeadCard article={articles[0]} onDiscard={discard} />
+            <LeadCard article={shown[0]} onDiscard={discard} />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {articles.slice(1).map((a) => (
+              {shown.slice(1).map((a) => (
                 <HeadlineCard key={a.id} article={a} onDiscard={discard} />
               ))}
             </div>
@@ -506,7 +517,7 @@ export function FeedClient() {
           )}
         </div>
       ) : (
-        renderItems(articles)
+        renderItems(shown)
       )}
     </div>
   )
