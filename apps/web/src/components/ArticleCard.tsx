@@ -90,7 +90,7 @@ export function ArticleCard({
           <span className="ml-auto" />
           <BiasBar sources={article.cluster_source_names} compact />
           <ClusterBadge clusterId={article.cluster_id} sources={article.cluster_sources} />
-          <CardActions articleId={article.id} saved={article.saved} />
+          <CardActions articleId={article.id} title={article.title} saved={article.saved} />
         </div>
         <h3 className="line-clamp-2 font-medium leading-snug text-card-foreground transition-colors group-hover:text-accent">
           {article.title}

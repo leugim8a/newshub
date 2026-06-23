@@ -42,7 +42,7 @@ function Meta({ article }: { article: Article }) {
       <span className="ml-auto" />
       <BiasBar sources={article.cluster_source_names} compact />
       <ClusterBadge clusterId={article.cluster_id} sources={article.cluster_sources} />
-      <CardActions articleId={article.id} saved={article.saved} />
+      <CardActions articleId={article.id} title={article.title} saved={article.saved} />
     </div>
   )
 }

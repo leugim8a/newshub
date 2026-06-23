@@ -45,6 +45,30 @@ function parseJson<T>(raw: string): T | null {
   }
 }
 
+// Resume un artículo individual (botón "Resumir" bajo demanda).
+export async function summarizeArticle(
+  title: string,
+  body: string | null,
+  lang: 'es' | 'en' = 'es',
+): Promise<{ summary: string; bullets: string[] } | null> {
+  const langName = lang === 'en' ? 'English' : 'español'
+  const prompt = `Eres un editor de noticias. Resume esta noticia en ${langName}:
+1) Un resumen claro de 2 frases.
+2) 3 puntos clave concisos.
+Devuelve SOLO JSON válido: {"summary":"...","bullets":["...","...","..."]}
+
+Titular: ${title}
+${body ? `Texto: ${body.slice(0, 1200)}` : ''}`
+  const out = await gemini(prompt)
+  if (!out) return null
+  const json = parseJson<{ summary?: string; bullets?: string[] }>(out)
+  if (!json) return null
+  return {
+    summary: String(json.summary ?? ''),
+    bullets: Array.isArray(json.bullets) ? json.bullets.map(String).slice(0, 4) : [],
+  }
+}
+
 // Resume una historia (cluster) a partir de las coberturas de varios medios.
 export async function summarizeCluster(
   headline: string,
