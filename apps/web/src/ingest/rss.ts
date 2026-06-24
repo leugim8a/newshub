@@ -37,11 +37,11 @@ export const rssConnector: Connector = async (source) => {
   const out: RawArticle[] = []
   for (const item of items) {
     if (!item.link || !item.title) continue
-    const yt = youtubeMedia(item as Record<string, unknown>)
+    const yt = youtubeMedia(item as unknown as Record<string, unknown>)
     const image =
       yt.image ||
       (item.enclosure?.url as string | undefined) ||
-      ((item as Record<string, unknown>)['media:content'] as { $?: { url?: string } } | undefined)
+      ((item as unknown as Record<string, unknown>)['media:content'] as { $?: { url?: string } } | undefined)
         ?.$?.url ||
       null
     const summary =
