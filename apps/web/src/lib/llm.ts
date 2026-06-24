@@ -45,6 +45,25 @@ function parseJson<T>(raw: string): T | null {
   }
 }
 
+// Traduce un resumen (texto + bullets) al idioma destino, conservando la estructura.
+export async function translateSummary(
+  summary: string,
+  bullets: string[],
+  to: 'es' | 'en',
+): Promise<{ summary: string; bullets: string[] } | null> {
+  const langName = to === 'en' ? 'English' : 'español'
+  const prompt = `Traduce los valores de este JSON al ${langName}. NO traduzcas las claves. Devuelve SOLO el JSON traducido, misma estructura:
+${JSON.stringify({ summary, bullets })}`
+  const out = await gemini(prompt, 800)
+  if (!out) return null
+  const json = parseJson<{ summary?: string; bullets?: string[] }>(out)
+  if (!json) return null
+  return {
+    summary: String(json.summary ?? ''),
+    bullets: Array.isArray(json.bullets) ? json.bullets.map(String) : [],
+  }
+}
+
 // Resume un artículo individual (botón "Resumir" bajo demanda).
 export async function summarizeArticle(
   title: string,
