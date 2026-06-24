@@ -26,8 +26,12 @@ export async function resolveChannelId(input: string): Promise<string | null> {
     })
     if (!res.ok) return null
     const html = await res.text()
+    // Prioriza el id CANÓNICO del canal (evita coger un canal recomendado/clips):
+    // <link rel="canonical"> → "externalId" → og:url → fallback.
     const m =
-      html.match(/"(?:channelId|externalId)":"(UC[\w-]{20,})"/) ||
+      html.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/channel\/(UC[\w-]{20,})">/) ||
+      html.match(/"externalId":"(UC[\w-]{20,})"/) ||
+      html.match(/<meta property="og:url" content="https:\/\/www\.youtube\.com\/channel\/(UC[\w-]{20,})">/) ||
       html.match(/\/channel\/(UC[\w-]{20,})/) ||
       html.match(/(UC[\w-]{22})/)
     return m ? m[1] : null

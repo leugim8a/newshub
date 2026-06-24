@@ -78,6 +78,14 @@ async function run(creators: Creator[]) {
       topicId = ins.rows[0].id
     }
 
+    // Desligar canales de YouTube anteriores de este tema (p. ej. un id mal resuelto)
+    // para que no sigan colgando vídeos equivocados.
+    await query(
+      `UPDATE sources SET active = false, topic_id = NULL
+        WHERE topic_id = $1 AND url LIKE 'https://www.youtube.com/feeds/%' AND url <> $2`,
+      [topicId, feed],
+    )
+
     // Fuente: canal de YouTube ligado al tema.
     const src = await query<{ inserted: boolean }>(
       `INSERT INTO sources (kind, name, url, lang, active, topic_id)
