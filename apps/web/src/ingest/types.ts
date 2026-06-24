@@ -5,6 +5,7 @@ export type SourceRow = {
   url: string
   lang: string
   config: Record<string, unknown>
+  topic_id?: number | null
 }
 
 // Artículo normalizado que devuelve cada conector.

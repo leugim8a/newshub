@@ -114,7 +114,7 @@ export async function runIngest(): Promise<IngestResult> {
   }
 
   const { rows: sources } = await query<SourceRow>(
-    `SELECT id, kind, name, url, lang, config FROM sources WHERE active = true`,
+    `SELECT id, kind, name, url, lang, config, topic_id FROM sources WHERE active = true`,
   )
   await ensureTopicEmbeddings()
   const topics = await loadTopics()
@@ -124,7 +124,7 @@ export async function runIngest(): Promise<IngestResult> {
     try {
       const articles = await connectors[source.kind](source)
       result.fetched += articles.length
-      await processArticles(source.id, articles, topics, result, true)
+      await processArticles(source.id, articles, topics, result, true, source.topic_id ?? null)
       await query(`UPDATE sources SET last_fetch = NOW() WHERE id = $1`, [source.id])
     } catch (err) {
       result.errors.push({ source: source.name, error: (err as Error).message })
@@ -185,6 +185,7 @@ export async function processArticles(
   topics: TopicRow[],
   result: IngestResult,
   notify = true,
+  boundTopicId: number | null = null,
 ): Promise<void> {
   // 1) Insertar artículos nuevos (deduplicados)
   const fresh: NewArticle[] = []
@@ -268,6 +269,12 @@ export async function processArticles(
       }
     } else {
       for (const t of art.matches) matchedIds.set(t.id, t)
+    }
+
+    // Fuente ligada a un tema: etiqueta directa (p. ej. canal de YouTube → su tema).
+    if (boundTopicId) {
+      const bt = topicById.get(boundTopicId)
+      if (bt) matchedIds.set(bt.id, bt)
     }
 
     for (const topic of matchedIds.values()) {

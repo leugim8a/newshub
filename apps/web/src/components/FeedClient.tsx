@@ -53,7 +53,7 @@ const VIEWS: {
   { id: 'mosaic', icon: LayoutGrid, labelKey: 'view.mosaic' },
 ]
 
-const BUILTIN_ORDER = ['actualidad', 'tech', 'sociedad']
+const BUILTIN_ORDER = ['actualidad', 'tech', 'divulgadores', 'sociedad']
 const DEFAULT_SECTION_ORDER = [...BUILTIN_ORDER, 'custom', 'general']
 
 function rank(k: string): number {
@@ -228,6 +228,7 @@ export function FeedClient() {
     actualidad: t('group.actualidad'),
     tech: t('group.tech'),
     sociedad: t('group.sociedad'),
+    divulgadores: t('group.divulgadores'),
     custom: t('topics.custom'),
     general: t('feed.general'),
   }
