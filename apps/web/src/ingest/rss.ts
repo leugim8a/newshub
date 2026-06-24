@@ -1,7 +1,17 @@
 import Parser from 'rss-parser'
 import type { Connector, RawArticle } from './types'
 
-const parser = new Parser({ timeout: 15000 })
+// Muchos feeds (YouTube en especial) bloquean o sirven una página de consentimiento
+// al User-Agent por defecto de rss-parser → 0 items. Con UA de navegador + idioma
+// responden el Atom correctamente.
+const parser = new Parser({
+  timeout: 15000,
+  headers: {
+    'User-Agent':
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+  },
+})
 
 // Conector RSS/Atom — base del MVP.
 export const rssConnector: Connector = async (source) => {
