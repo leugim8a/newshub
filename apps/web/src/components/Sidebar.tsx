@@ -3,6 +3,7 @@
 import { Newspaper, Hash, Rss, Settings, Radio, TrendingUp } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { cn } from '@/lib/utils/cn'
 
 const tabs = [
@@ -56,6 +57,10 @@ export function Sidebar() {
           )
         })}
       </nav>
+
+      <div className="mt-auto">
+        <ThemeToggle />
+      </div>
     </div>
   )
 }
