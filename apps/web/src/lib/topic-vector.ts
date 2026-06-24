@@ -26,8 +26,12 @@ export async function storeTopicEmbedding(
 
 // Rellena los vectores de los temas que aún no lo tienen (idempotente, barato).
 export async function ensureTopicEmbeddings(): Promise<void> {
+  // Los temas de divulgador se identifican por su canal/nombre (fuente ligada +
+  // keyword), NO por semántica: si tuvieran embedding, el matching semántico les
+  // colgaría todo el contenido genérico de IA. Se excluyen a propósito.
   const { rows } = await query<{ id: number; label: string; keywords: string[] }>(
-    `SELECT id, label, keywords FROM topics WHERE embedding IS NULL`,
+    `SELECT id, label, keywords FROM topics
+      WHERE embedding IS NULL AND COALESCE(topic_group, '') <> 'divulgadores'`,
   )
   for (const t of rows) {
     await storeTopicEmbedding(t.id, t.label, t.keywords)

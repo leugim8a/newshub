@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { storeTopicEmbedding } from '@/lib/topic-vector'
 import { channelFeed, resolveChannelId } from '@/lib/youtube'
 
 export const dynamic = 'force-dynamic'
@@ -64,7 +63,12 @@ async function run(creators: Creator[]) {
     let topicId: number
     if (existing.rows.length > 0) {
       topicId = existing.rows[0].id
-      await query(`UPDATE topics SET topic_group = 'divulgadores' WHERE id = $1`, [topicId])
+      // Sin embedding: identidad por canal/nombre, no por semántica (evita que se le
+      // cuelgue todo el contenido genérico de IA).
+      await query(
+        `UPDATE topics SET topic_group = 'divulgadores', embedding = NULL WHERE id = $1`,
+        [topicId],
+      )
     } else {
       const ins = await query<{ id: number }>(
         `INSERT INTO topics (slug, label, kind, lang, keywords, topic_group)
@@ -73,18 +77,34 @@ async function run(creators: Creator[]) {
       )
       topicId = ins.rows[0].id
     }
-    await storeTopicEmbedding(topicId, c.name, [c.name]).catch(() => {})
 
     // Fuente: canal de YouTube ligado al tema.
-    const src = await query<{ id: number }>(
+    const src = await query<{ inserted: boolean }>(
       `INSERT INTO sources (kind, name, url, lang, active, topic_id)
        VALUES ('rss', $1, $2, $3, true, $4)
        ON CONFLICT (kind, url) DO UPDATE SET active = true, topic_id = EXCLUDED.topic_id, name = EXCLUDED.name
-       RETURNING id, (xmax = 0) AS inserted`,
+       RETURNING (xmax = 0) AS inserted`,
       [`YouTube · ${c.name}`, feed, c.lang, topicId],
     )
-    if ((src.rows[0] as unknown as { inserted: boolean }).inserted) created.push(c.name)
+    if (src.rows[0]?.inserted) created.push(c.name)
     else updated.push(c.name)
+
+    // Reconciliar etiquetas: SOLO vídeos de su canal + artículos que mencionan su
+    // nombre. Borra cualquier etiqueta semántica cruzada previa.
+    await query(`DELETE FROM article_topics WHERE topic_id = $1`, [topicId])
+    await query(
+      `INSERT INTO article_topics (article_id, topic_id)
+         SELECT a.id, $1 FROM articles a JOIN sources s ON s.id = a.source_id
+          WHERE s.topic_id = $1
+       ON CONFLICT DO NOTHING`,
+      [topicId],
+    )
+    await query(
+      `INSERT INTO article_topics (article_id, topic_id)
+         SELECT a.id, $1 FROM articles a WHERE a.title ILIKE '%' || $2 || '%'
+       ON CONFLICT DO NOTHING`,
+      [topicId, c.name],
+    )
   }
 
   return { created, updated, failed }
