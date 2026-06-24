@@ -10,6 +10,9 @@ const parser = new Parser({
     'User-Agent':
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
     'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+    // El servidor está en la UE: sin esta cookie, YouTube sirve el muro de
+    // consentimiento (0 entradas). CONSENT=YES+ lo salta.
+    Cookie: 'CONSENT=YES+cb.20210328-17-p0.en+FX+000; SOCS=CAISEwgDEgk0ODE3Nzk3MjQaAmVuIAEaBgiA_LyaBg',
   },
 })
 
