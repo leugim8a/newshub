@@ -113,22 +113,32 @@ export async function runIngest(): Promise<IngestResult> {
     errors: [],
   }
 
+  // Más antiguo primero: YouTube limita por ráfaga (~11 feeds/IP/ventana). Al priorizar
+  // los menos rastreados y NO marcar last_fetch cuando un feed vuelve vacío (posible
+  // 429), las fuentes que se quedaron fuera entran en la siguiente pasada (rotación).
   const { rows: sources } = await query<SourceRow>(
-    `SELECT id, kind, name, url, lang, config, topic_id FROM sources WHERE active = true`,
+    `SELECT id, kind, name, url, lang, config, topic_id FROM sources
+      WHERE active = true ORDER BY last_fetch ASC NULLS FIRST`,
   )
   await ensureTopicEmbeddings()
   const topics = await loadTopics()
   result.sources = sources.length
 
+  const isYouTube = (u: string) => u.includes('youtube.com/feeds')
   for (const source of sources) {
     try {
       const articles = await connectors[source.kind](source)
       result.fetched += articles.length
       await processArticles(source.id, articles, topics, result, true, source.topic_id ?? null)
-      await query(`UPDATE sources SET last_fetch = NOW() WHERE id = $1`, [source.id])
+      // Solo marca rastreada si trajo algo (un feed vacío puede ser un 429 transitorio).
+      if (articles.length > 0) {
+        await query(`UPDATE sources SET last_fetch = NOW() WHERE id = $1`, [source.id])
+      }
     } catch (err) {
       result.errors.push({ source: source.name, error: (err as Error).message })
     }
+    // Espaciado suave entre feeds de YouTube para no disparar el límite por ráfaga.
+    if (isYouTube(source.url)) await new Promise((r) => setTimeout(r, 400))
   }
 
   // Enriquecer con imagen (og:image) los artículos recientes sin ella.
