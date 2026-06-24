@@ -44,6 +44,15 @@ export async function POST(req: Request) {
           const res = emptyResult()
           await processArticles(s.id, arts, topics, res, false, s.topic_id ?? null)
           inserted = res.inserted
+          // Rellena descripción/miniatura en los vídeos ya guardados (que no se
+          // reinsertan): el summary venía vacío antes de capturar media:description.
+          for (const a of arts) {
+            await query(
+              `UPDATE articles SET summary = COALESCE(summary, $2), image_url = COALESCE(image_url, $3)
+                 WHERE url = $1 AND (summary IS NULL OR image_url IS NULL)`,
+              [a.url, a.summary ?? null, a.imageUrl ?? null],
+            )
+          }
           await query(`UPDATE sources SET last_fetch = NOW() WHERE id = $1`, [s.id])
           break
         }
