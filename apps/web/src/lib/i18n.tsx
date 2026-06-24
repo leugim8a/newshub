@@ -90,6 +90,11 @@ const dict = {
     'story.stop': 'Detener',
     'story.noSummary': 'Resumen no disponible (configura GEMINI_API_KEY o se generará al haber ≥2 fuentes).',
     'story.back': 'Volver',
+    'story.analysis': 'Análisis de sesgo',
+    'story.hideAnalysis': 'Ocultar análisis',
+    'story.objectivityScore': 'Objetividad (IA): mayor = más factual',
+    'story.analysisNote':
+      'Puntuación de objetividad por IA (0–100) comparando cómo cada medio cubre ESTA misma noticia. Es una señal, no un veredicto.',
     'reader.read': 'Leer aquí',
     'reader.original': 'Ver original',
     'reader.failed': 'No se pudo extraer el texto. Abre el original.',
@@ -237,6 +242,11 @@ const dict = {
     'story.stop': 'Stop',
     'story.noSummary': 'Summary unavailable (set GEMINI_API_KEY; generated when ≥2 sources).',
     'story.back': 'Back',
+    'story.analysis': 'Bias analysis',
+    'story.hideAnalysis': 'Hide analysis',
+    'story.objectivityScore': 'Objectivity (AI): higher = more factual',
+    'story.analysisNote':
+      'AI objectivity score (0–100) comparing how each outlet covers THIS same story. A signal, not a verdict.',
     'reader.read': 'Read here',
     'reader.original': 'View original',
     'reader.failed': 'Could not extract the text. Open the original.',

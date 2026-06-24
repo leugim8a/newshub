@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { llmEnabled } from '@/lib/llm'
-import { extractText } from '@/lib/extract'
-import { scoreClusterObjectivity, type Coverage } from '@/lib/objectivity'
+import { scoreAndStoreCluster } from '@/lib/score-cluster'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -27,39 +26,8 @@ async function run(limit = 5, force = false): Promise<{ scored: number; clusters
 
   let scored = 0
   for (const c of clusters) {
-    // Una cobertura por fuente (la más reciente) para comparar.
-    const { rows: covs } = await query<Coverage & { url: string }>(
-      `SELECT DISTINCT ON (a.source_id)
-              a.source_id AS "sourceId", s.name AS source, a.title, a.summary, a.url
-         FROM articles a JOIN sources s ON s.id = a.source_id
-        WHERE a.cluster_id = $1
-        ORDER BY a.source_id, COALESCE(a.published_at, a.ingested_at) DESC`,
-      [c.id],
-    )
-    if (covs.length < 2) {
-      await query(`UPDATE clusters SET objectivity_scored_at = now() WHERE id = $1`, [c.id])
-      continue
-    }
-
-    // Texto completo (reader) de cada cobertura, en paralelo. Si falla, se usa el summary.
-    const withBody = await Promise.all(
-      covs.map(async (cov) => ({ ...cov, body: await extractText(cov.url).catch(() => null) })),
-    )
-
-    const result = await scoreClusterObjectivity(withBody, c.lang === 'en' ? 'en' : 'es')
-    if (result) {
-      for (const r of result) {
-        await query(
-          `INSERT INTO objectivity_scores (cluster_id, source_id, score, reason)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (cluster_id, source_id)
-           DO UPDATE SET score = EXCLUDED.score, reason = EXCLUDED.reason`,
-          [c.id, r.sourceId, r.score, r.reason],
-        )
-        scored++
-      }
-    }
-    await query(`UPDATE clusters SET objectivity_scored_at = now() WHERE id = $1`, [c.id])
+    const result = await scoreAndStoreCluster(c.id, c.lang === 'en' ? 'en' : 'es')
+    scored += result.length
   }
   return { scored, clusters: clusters.length }
 }

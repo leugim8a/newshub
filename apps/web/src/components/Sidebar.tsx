@@ -1,8 +1,9 @@
 'use client'
 
-import { Newspaper, Hash, Rss, Settings, Radio, TrendingUp } from 'lucide-react'
+import { Newspaper, Hash, Rss, Settings, TrendingUp } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { JanusLogo } from '@/components/JanusLogo'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { cn } from '@/lib/utils/cn'
 
@@ -20,8 +21,12 @@ export function Sidebar() {
   return (
     <div className="fixed left-0 top-0 z-40 flex h-full w-20 flex-col items-center gap-6 border-r border-border bg-sidebar py-6">
       {/* Marca */}
-      <Link href="/" className="brand-glow mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/15 text-accent">
-        <Radio className="h-6 w-6" />
+      <Link
+        href="/"
+        title="NewsHub"
+        className="brand-glow mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/15 text-accent"
+      >
+        <JanusLogo className="h-8 w-8" />
       </Link>
 
       <nav className="flex flex-col gap-3">
