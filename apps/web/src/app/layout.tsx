@@ -7,6 +7,10 @@ export const metadata: Metadata = {
   title: 'NewsHub — Lo último, al instante',
   description: 'Agregador de noticias personalizado con alertas en tiempo real.',
   manifest: '/manifest.webmanifest',
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
+  },
 }
 
 export const viewport: Viewport = {
