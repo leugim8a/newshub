@@ -15,8 +15,8 @@ export async function GET() {
     ai_count: number
   }>(
     `SELECT s.name, s.objectivity,
-            avg(os.score)::float AS ai_avg,
-            count(os.score)::int  AS ai_count
+            round(avg(os.score))::int AS ai_avg,
+            count(os.score)::int      AS ai_count
        FROM sources s
        LEFT JOIN objectivity_scores os ON os.source_id = s.id
       GROUP BY s.id`,
