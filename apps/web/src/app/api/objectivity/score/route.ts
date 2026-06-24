@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { llmEnabled } from '@/lib/llm'
+import { extractText } from '@/lib/extract'
 import { scoreClusterObjectivity, type Coverage } from '@/lib/objectivity'
 
 export const dynamic = 'force-dynamic'
@@ -8,13 +9,13 @@ export const maxDuration = 120
 
 // Puntúa la objetividad (comparativa, IA) de los clusters de ≥2 fuentes aún sin
 // valorar. Disparado por el cron de Coolify; protegido con Bearer $INGEST_TOKEN.
-async function run(limit = 8): Promise<{ scored: number; clusters: number }> {
+async function run(limit = 5, force = false): Promise<{ scored: number; clusters: number }> {
   if (!llmEnabled()) return { scored: 0, clusters: 0 }
 
   const { rows: clusters } = await query<{ id: number; lang: string }>(
     `SELECT c.id, c.lang FROM clusters c
       WHERE c.source_count >= 2
-        AND c.objectivity_scored_at IS NULL
+        ${force ? '' : 'AND c.objectivity_scored_at IS NULL'}
         AND EXISTS (
           SELECT 1 FROM articles a WHERE a.cluster_id = c.id
             AND COALESCE(a.published_at, a.ingested_at) > now() - interval '7 days'
@@ -27,9 +28,9 @@ async function run(limit = 8): Promise<{ scored: number; clusters: number }> {
   let scored = 0
   for (const c of clusters) {
     // Una cobertura por fuente (la más reciente) para comparar.
-    const { rows: covs } = await query<Coverage>(
+    const { rows: covs } = await query<Coverage & { url: string }>(
       `SELECT DISTINCT ON (a.source_id)
-              a.source_id AS "sourceId", s.name AS source, a.title, a.summary
+              a.source_id AS "sourceId", s.name AS source, a.title, a.summary, a.url
          FROM articles a JOIN sources s ON s.id = a.source_id
         WHERE a.cluster_id = $1
         ORDER BY a.source_id, COALESCE(a.published_at, a.ingested_at) DESC`,
@@ -40,7 +41,12 @@ async function run(limit = 8): Promise<{ scored: number; clusters: number }> {
       continue
     }
 
-    const result = await scoreClusterObjectivity(covs, c.lang === 'en' ? 'en' : 'es')
+    // Texto completo (reader) de cada cobertura, en paralelo. Si falla, se usa el summary.
+    const withBody = await Promise.all(
+      covs.map(async (cov) => ({ ...cov, body: await extractText(cov.url).catch(() => null) })),
+    )
+
+    const result = await scoreClusterObjectivity(withBody, c.lang === 'en' ? 'en' : 'es')
     if (result) {
       for (const r of result) {
         await query(
@@ -63,7 +69,8 @@ export async function POST(req: Request) {
   const auth = req.headers.get('authorization')
   if (token && auth !== `Bearer ${token}`)
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  return NextResponse.json(await run())
+  const force = new URL(req.url).searchParams.get('force') === '1'
+  return NextResponse.json(await run(5, force))
 }
 
 export async function GET(req: Request) {
@@ -71,5 +78,6 @@ export async function GET(req: Request) {
   const url = new URL(req.url)
   if (token && url.searchParams.get('token') !== token)
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  return NextResponse.json(await run())
+  const force = url.searchParams.get('force') === '1'
+  return NextResponse.json(await run(5, force))
 }

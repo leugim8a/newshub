@@ -1,7 +1,13 @@
 import { gemini } from '@/lib/llm'
 import type { Level } from '@/lib/bias'
 
-export type Coverage = { sourceId: number; source: string; title: string; summary: string | null }
+export type Coverage = {
+  sourceId: number
+  source: string
+  title: string
+  summary: string | null
+  body?: string | null // texto completo (reader); si falta, se usa el summary
+}
 export type ClusterScore = { sourceId: number; score: number; reason: string }
 
 // Umbrales media→nivel y muestra mínima para sugerir (configurable).
@@ -24,11 +30,11 @@ export async function scoreClusterObjectivity(
   if (coverages.length < 2) return null
   const langName = lang === 'en' ? 'English' : 'español'
   const list = coverages
-    .map(
-      (c, i) =>
-        `${i + 1}. [${c.source}] ${c.title}. ${(c.summary ?? '').slice(0, 300)}`,
-    )
-    .join('\n')
+    .map((c, i) => {
+      const text = (c.body ?? c.summary ?? '').slice(0, 2500)
+      return `### Cobertura ${i + 1} — ${c.source}\nTitular: ${c.title}\nTexto: ${text}`
+    })
+    .join('\n\n')
 
   const prompt = `Eres un analista de medios neutral. Estas son coberturas de la MISMA noticia por distintos medios. Evalúa la OBJETIVIDAD de cada cobertura por señales CONCRETAS, NO por si estás de acuerdo con el contenido ni por la línea editorial del medio:
 - Lenguaje cargado o emocional, adjetivación valorativa.
