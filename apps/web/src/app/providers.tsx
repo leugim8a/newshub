@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, type ReactNode } from 'react'
+import { BiasProvider } from '@/lib/bias-context'
 import { I18nProvider } from '@/lib/i18n'
 import { Toaster, pushToast } from '@/components/Toaster'
 
@@ -32,10 +33,12 @@ function ProfileBootstrap() {
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <I18nProvider>
-      {children}
-      <ProfileBootstrap />
-      <RealtimeListener />
-      <Toaster />
+      <BiasProvider>
+        {children}
+        <ProfileBootstrap />
+        <RealtimeListener />
+        <Toaster />
+      </BiasProvider>
     </I18nProvider>
   )
 }

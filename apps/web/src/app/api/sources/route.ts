@@ -10,7 +10,7 @@ const parser = new Parser({ timeout: 15000 })
 // GET — lista de fuentes gestionables (excluye las internas de búsqueda).
 export async function GET() {
   const { rows } = await query(
-    `SELECT s.id, s.name, s.url, s.lang, s.kind, s.active, s.last_fetch,
+    `SELECT s.id, s.name, s.url, s.lang, s.kind, s.active, s.last_fetch, s.objectivity,
             count(a.id) AS article_count
      FROM sources s
      LEFT JOIN articles a ON a.source_id = s.id
@@ -98,16 +98,26 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, id: ins.rows[0].id, name, kind: 'rss', items: feed.items?.length ?? 0 })
 }
 
-// PATCH { id, active } — activar / pausar.
+// PATCH { id, active? , objectivity? } — activar/pausar o fijar objetividad.
 export async function PATCH(req: Request) {
-  const body = (await req.json()) as { id?: number; active?: boolean }
-  if (!body.id || typeof body.active !== 'boolean') {
-    return NextResponse.json({ error: 'id y active requeridos' }, { status: 400 })
+  const body = (await req.json()) as {
+    id?: number
+    active?: boolean
+    objectivity?: 'objective' | 'mixed' | 'biased' | null
   }
-  await query(
-    `UPDATE sources SET active = $2 WHERE id = $1 AND kind IN ('rss','sitemap','scrape')`,
-    [body.id, body.active],
-  )
+  if (!body.id) return NextResponse.json({ error: 'id requerido' }, { status: 400 })
+
+  if (typeof body.active === 'boolean') {
+    await query(
+      `UPDATE sources SET active = $2 WHERE id = $1 AND kind IN ('rss','sitemap','scrape')`,
+      [body.id, body.active],
+    )
+  }
+  if ('objectivity' in body) {
+    const v = body.objectivity
+    const valid = v === 'objective' || v === 'mixed' || v === 'biased' ? v : null
+    await query(`UPDATE sources SET objectivity = $2 WHERE id = $1`, [body.id, valid])
+  }
   return NextResponse.json({ ok: true })
 }
 

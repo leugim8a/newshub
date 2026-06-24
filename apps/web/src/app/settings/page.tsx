@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import ShinyText from '@/components/ShinyText'
 import { DigestSubscribe } from '@/components/DigestSubscribe'
 import { MuteManager } from '@/components/MuteManager'
+import { SourceObjectivity } from '@/components/SourceObjectivity'
 import { NotificationBell } from '@/components/NotificationBell'
 import { Button } from '@/components/ui/button'
 import { pushToast } from '@/components/Toaster'
@@ -109,6 +110,8 @@ export default function SettingsPage() {
         </div>
 
         <DigestSubscribe />
+
+        <SourceObjectivity />
 
         <MuteManager />
       </div>
