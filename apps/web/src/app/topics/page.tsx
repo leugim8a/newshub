@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronDown, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { ChevronDown, Loader2, Pencil, Plus, Rss, Search, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import ShinyText from '@/components/ShinyText'
 import { Button } from '@/components/ui/button'
@@ -19,7 +19,7 @@ type Topic = {
   topic_group?: string | null
 }
 
-const BUILTIN_ORDER = ['actualidad', 'tech', 'sociedad']
+const BUILTIN_ORDER = ['actualidad', 'tech', 'divulgadores', 'cocina', 'estetica', 'sociedad']
 
 type SectionOption = { key: string; label: string }
 
@@ -89,6 +89,9 @@ export default function TopicsPage() {
     actualidad: t('group.actualidad'),
     tech: t('group.tech'),
     sociedad: t('group.sociedad'),
+    divulgadores: t('group.divulgadores'),
+    cocina: t('group.cocina'),
+    estetica: t('group.estetica'),
     custom: t('topics.custom'),
     general: t('feed.general'),
   }
@@ -259,6 +262,13 @@ function TopicRow({
 }) {
   const { t } = useI18n()
   const [searching, setSearching] = useState(false)
+  const [sourcesOpen, setSourcesOpen] = useState(false)
+  const [sourceUrl, setSourceUrl] = useState('')
+  const [addingSource, setAddingSource] = useState(false)
+  const [discovering, setDiscovering] = useState(false)
+  const [suggestions, setSuggestions] = useState<{ name: string; url: string; via: string }[] | null>(
+    null,
+  )
   const [editing, setEditing] = useState(false)
   const [editLabel, setEditLabel] = useState(tp.label)
   const [editKeywords, setEditKeywords] = useState((tp.keywords ?? []).join(', '))
@@ -286,6 +296,46 @@ function TopicRow({
       /* noop */
     } finally {
       setSearching(false)
+    }
+  }
+
+  const addSource = async (url: string, name?: string) => {
+    const u = url.trim()
+    if (!u) return
+    setAddingSource(true)
+    try {
+      const res = await fetch('/api/topics/sources', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slug: tp.slug, url: u, name }),
+      })
+      const d = (await res.json()) as { ok?: boolean; via?: string; tagged?: number }
+      if (d.ok) {
+        pushToast({ title: `${t('topics.sourceAdded')} (${d.via})`, body: `#${tp.label}` })
+        setSourceUrl('')
+        setSuggestions((s) => s?.filter((x) => x.url !== u) ?? null)
+        onSearched?.()
+      } else {
+        pushToast({ title: t('topics.sourceFail') })
+      }
+    } catch {
+      pushToast({ title: t('topics.sourceFail') })
+    } finally {
+      setAddingSource(false)
+    }
+  }
+
+  const discover = async () => {
+    setDiscovering(true)
+    setSuggestions(null)
+    try {
+      const res = await fetch(`/api/topics/sources?slug=${encodeURIComponent(tp.slug)}`)
+      const d = (await res.json()) as { suggestions: { name: string; url: string; via: string }[] }
+      setSuggestions(d.suggestions ?? [])
+    } catch {
+      setSuggestions([])
+    } finally {
+      setDiscovering(false)
     }
   }
 
@@ -348,44 +398,111 @@ function TopicRow({
   }
 
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-border bg-card p-4">
-      <div>
-        <p className="font-medium">#{tp.label}</p>
-        <Badge className="mt-1">
-          {tp.article_count} {t('trends.articles')}
-        </Badge>
-      </div>
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={search}
-          disabled={searching}
-          title={t('topics.search')}
-        >
-          <Search className="h-4 w-4" />
-          <span className="hidden sm:inline">
-            {searching ? t('topics.searching') : t('topics.search')}
-          </span>
-        </Button>
-        <Button
-          variant={tp.followed ? 'secondary' : 'default'}
-          size="sm"
-          onClick={() => onToggle(tp.slug, !tp.followed)}
-        >
-          {tp.followed ? t('topics.following') : t('topics.follow')}
-        </Button>
-        {onEdited && (
-          <Button variant="ghost" size="icon" onClick={() => setEditing(true)} title={t('topics.edit')}>
-            <Pencil className="h-4 w-4" />
+    <div className="rounded-2xl border border-border bg-card">
+      <div className="flex items-center justify-between p-4">
+        <div>
+          <p className="font-medium">#{tp.label}</p>
+          <Badge className="mt-1">
+            {tp.article_count} {t('trends.articles')}
+          </Badge>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSourcesOpen((v) => !v)}
+            title={t('topics.sources')}
+            className={sourcesOpen ? 'border-accent text-accent' : ''}
+          >
+            <Rss className="h-4 w-4" />
+            <span className="hidden sm:inline">{t('topics.sources')}</span>
           </Button>
-        )}
-        {onRemove && (
-          <Button variant="ghost" size="icon" onClick={() => onRemove(tp.slug)} title={t('topics.delete')}>
-            <Trash2 className="h-4 w-4" />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={search}
+            disabled={searching}
+            title={t('topics.search')}
+          >
+            <Search className="h-4 w-4" />
+            <span className="hidden sm:inline">
+              {searching ? t('topics.searching') : t('topics.search')}
+            </span>
           </Button>
-        )}
+          <Button
+            variant={tp.followed ? 'secondary' : 'default'}
+            size="sm"
+            onClick={() => onToggle(tp.slug, !tp.followed)}
+          >
+            {tp.followed ? t('topics.following') : t('topics.follow')}
+          </Button>
+          {onEdited && (
+            <Button variant="ghost" size="icon" onClick={() => setEditing(true)} title={t('topics.edit')}>
+              <Pencil className="h-4 w-4" />
+            </Button>
+          )}
+          {onRemove && (
+            <Button variant="ghost" size="icon" onClick={() => onRemove(tp.slug)} title={t('topics.delete')}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
+
+      {sourcesOpen && (
+        <div className="border-t border-border p-4">
+          {/* Añadir manual */}
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              value={sourceUrl}
+              onChange={(e) => setSourceUrl(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addSource(sourceUrl)}
+              placeholder={t('topics.addSourcePh')}
+              className="h-10 flex-1 rounded-full border border-input bg-background px-4 text-sm outline-none focus:border-accent"
+            />
+            <Button onClick={() => addSource(sourceUrl)} disabled={addingSource || !sourceUrl.trim()} size="sm">
+              {addingSource ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              {t('topics.add2')}
+            </Button>
+            <Button variant="outline" size="sm" onClick={discover} disabled={discovering}>
+              {discovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {discovering ? t('topics.discovering') : t('topics.discover')}
+            </Button>
+          </div>
+
+          {/* Sugerencias IA */}
+          {suggestions && (
+            <div className="mt-3 flex flex-col gap-1.5">
+              {suggestions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">—</p>
+              ) : (
+                suggestions.map((s) => (
+                  <div
+                    key={s.url}
+                    className="flex items-center justify-between gap-2 rounded-xl border border-border bg-background/40 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{s.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {s.via === 'youtube' ? '▶ YouTube' : '🔗 RSS'} · {s.url}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => addSource(s.url, s.name)}
+                      disabled={addingSource}
+                      className="shrink-0"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

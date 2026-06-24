@@ -229,6 +229,8 @@ export function FeedClient() {
     tech: t('group.tech'),
     sociedad: t('group.sociedad'),
     divulgadores: t('group.divulgadores'),
+    cocina: t('group.cocina'),
+    estetica: t('group.estetica'),
     custom: t('topics.custom'),
     general: t('feed.general'),
   }

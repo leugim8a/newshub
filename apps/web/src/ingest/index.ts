@@ -57,7 +57,7 @@ function titleHash(title: string): string {
 // --- Match de temas por palabra completa (a prueba de transpilación) ---
 const TOKEN_SPLIT = /[^\p{L}\p{N}]+/u
 
-type TopicRow = {
+export type TopicRow = {
   id: number
   slug: string
   label: string
