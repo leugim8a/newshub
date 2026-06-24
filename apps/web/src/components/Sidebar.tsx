@@ -24,9 +24,9 @@ export function Sidebar() {
       <Link
         href="/"
         title="NewsHub"
-        className="brand-glow mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/15 text-accent"
+        className="brand-glow mb-3 flex items-center justify-center transition-transform hover:scale-105"
       >
-        <JanusLogo className="h-8 w-8" />
+        <JanusLogo className="h-14 w-14" />
       </Link>
 
       <nav className="flex flex-col gap-3">
