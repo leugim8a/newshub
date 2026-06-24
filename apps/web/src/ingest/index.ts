@@ -36,11 +36,23 @@ const THROTTLE_TOPIC = '30 minutes' // máx 1 alerta por tema en esta ventana
 const DEDUPE_CLUSTER = '24 hours' // no repetir alerta de la misma historia
 
 // --- Utilidades de dedup ---
+// Parámetros de tracking que se descartan al canonicalizar. NO se borra el query
+// entero: rompía URLs cuya identidad está en el query (YouTube ?v=, ?id=, etc.) y
+// hacía que todos los vídeos colapsaran a youtube.com/watch (UNIQUE → 1 solo vídeo).
+const TRACKING_PARAMS = new Set([
+  'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+  'fbclid', 'gclid', 'gbraid', 'wbraid', 'msclkid', 'mc_cid', 'mc_eid',
+  'igshid', 'ref', 'ref_src', 'ref_url', 'spm', '_ga', 'yclid', 'soc_src', 'soc_trk',
+])
+
 function canonicalUrl(raw: string): string {
   try {
     const u = new URL(raw)
     u.hash = ''
-    u.search = ''
+    for (const k of [...u.searchParams.keys()]) {
+      if (TRACKING_PARAMS.has(k.toLowerCase())) u.searchParams.delete(k)
+    }
+    u.searchParams.sort()
     u.host = u.host.toLowerCase()
     let s = u.toString()
     if (s.endsWith('/')) s = s.slice(0, -1)
