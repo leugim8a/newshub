@@ -12,6 +12,7 @@ import {
   LayoutPanelTop,
   Newspaper,
   Sparkles,
+  X,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
@@ -77,6 +78,9 @@ export function FeedClient() {
   const [articles, setArticles] = useState<Article[]>([])
   const [topics, setTopics] = useState<Topic[]>([])
   const [active, setActive] = useState<string | null>(null)
+  // Selección múltiple de temas (se suman; toggle al re-clicar). Si hay alguno
+  // seleccionado, manda sobre Siguiendo/Todo/Guardados.
+  const [selected, setSelected] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<View>('portada')
   const [sectioned, setSectioned] = useState(false)
@@ -170,20 +174,39 @@ export function FeedClient() {
   const hideSection = (key: string) => setHiddenP([...hidden, key])
   const showSection = (key: string) => setHiddenP(hidden.filter((k) => k !== key))
 
-  const loadFeed = useCallback(async (sel: string | null) => {
+  const loadFeed = useCallback(async (sel: string | null, sels: string[]) => {
     const url =
-      sel === 'saved'
-        ? '/api/saved'
-        : sel === 'all'
-          ? '/api/feed?all=1'
-          : sel
-            ? `/api/feed?topic=${sel}`
-            : '/api/feed'
+      sels.length > 0
+        ? `/api/feed?topics=${sels.map(encodeURIComponent).join(',')}`
+        : sel === 'saved'
+          ? '/api/saved'
+          : sel === 'all'
+            ? '/api/feed?all=1'
+            : sel
+              ? `/api/feed?topic=${sel}`
+              : '/api/feed'
     const res = await fetch(url)
     const data = (await res.json()) as { articles: Article[] }
     setArticles(data.articles)
     setLoading(false)
   }, [])
+
+  // Selecciona el modo base (Siguiendo/Todo/Guardados) y limpia la multiselección.
+  const pickBase = (mode: string | null) => {
+    setSelected([])
+    setActive(mode)
+  }
+  // Activa/desactiva un tema en la multiselección.
+  const toggleTopic = (slug: string) => {
+    setSelected((prev) => (prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]))
+  }
+  // Activa/desactiva TODOS los temas de una sección a la vez.
+  const toggleSection = (slugs: string[]) => {
+    setSelected((prev) => {
+      const allOn = slugs.every((s) => prev.includes(s))
+      return allOn ? prev.filter((s) => !slugs.includes(s)) : [...new Set([...prev, ...slugs])]
+    })
+  }
 
   useEffect(() => {
     fetch('/api/topics')
@@ -192,14 +215,14 @@ export function FeedClient() {
   }, [])
 
   useEffect(() => {
-    loadFeed(active)
-  }, [active, loadFeed])
+    loadFeed(active, selected)
+  }, [active, selected, loadFeed])
 
   useEffect(() => {
     const es = new EventSource('/api/events')
-    es.onmessage = () => loadFeed(active)
+    es.onmessage = () => loadFeed(active, selected)
     return () => es.close()
-  }, [active, loadFeed])
+  }, [active, selected, loadFeed])
 
   const discard = async (id: number) => {
     setArticles((arts) => arts.filter((a) => a.id !== id))
@@ -218,7 +241,7 @@ export function FeedClient() {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ articleId: id }),
           })
-          loadFeed(active)
+          loadFeed(active, selected)
         },
       },
     })
@@ -311,7 +334,7 @@ export function FeedClient() {
     })
   })()
 
-  const showSections = sectioned && (active === null || active === 'all')
+  const showSections = sectioned && selected.length === 0 && (active === null || active === 'all')
   const wide = view === 'portada' || view === 'mosaic' || showSections
 
   return (
@@ -344,9 +367,31 @@ export function FeedClient() {
 
       {/* Controles: Siguiendo/Todo · Temas (plegable) · Secciones · Vista */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Chip label={t('topics.following')} active={active === null} onClick={() => setActive(null)} />
-        <Chip label={t('feed.all')} active={active === 'all'} onClick={() => setActive('all')} />
-        <Chip label={t('feed.savedTab')} active={active === 'saved'} onClick={() => setActive('saved')} />
+        <Chip
+          label={t('topics.following')}
+          active={active === null && selected.length === 0}
+          onClick={() => pickBase(null)}
+        />
+        <Chip
+          label={t('feed.all')}
+          active={active === 'all' && selected.length === 0}
+          onClick={() => pickBase('all')}
+        />
+        <Chip
+          label={t('feed.savedTab')}
+          active={active === 'saved' && selected.length === 0}
+          onClick={() => pickBase('saved')}
+        />
+        {selected.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setSelected([])}
+            className="flex items-center gap-1 rounded-full border border-accent bg-accent/15 px-3 py-1.5 text-sm font-medium text-accent transition-colors hover:bg-accent/25"
+          >
+            {t('feed.clearSel')} ({selected.length})
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button
           type="button"
           onClick={toggleChips}
@@ -405,17 +450,30 @@ export function FeedClient() {
           {chipSectionKeys.map((key) => {
             const list = topics.filter((tp) => topicSectionKey(tp) === key)
             if (list.length === 0) return null
+            const slugs = list.map((tp) => tp.slug)
+            const allOn = slugs.every((s) => selected.includes(s))
             return (
               <div key={key} className="flex flex-wrap items-center gap-2">
-                <span className="mr-1 w-full text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:w-auto">
+                {/* Cabecera de sección clicable: activa/desactiva toda la categoría */}
+                <button
+                  type="button"
+                  onClick={() => toggleSection(slugs)}
+                  className={cn(
+                    'mr-1 rounded-full px-2 py-1 text-xs font-semibold uppercase tracking-wide transition-colors',
+                    allOn
+                      ? 'bg-accent/20 text-accent'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                  title={t('feed.toggleSection')}
+                >
                   {labelOf(key)}
-                </span>
+                </button>
                 {list.map((tp) => (
                   <Chip
                     key={tp.slug}
                     label={`#${tp.label}`}
-                    active={active === tp.slug}
-                    onClick={() => setActive(tp.slug)}
+                    active={selected.includes(tp.slug)}
+                    onClick={() => toggleTopic(tp.slug)}
                   />
                 ))}
               </div>

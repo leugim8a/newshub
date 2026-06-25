@@ -12,6 +12,12 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const topic = searchParams.get('topic')
+  // Selección múltiple: ?topics=slug1,slug2 → unión de esos temas.
+  const topicList = (searchParams.get('topics') ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 50)
   const all = searchParams.get('all') === '1'
   const limit = Math.min(Number(searchParams.get('limit')) || 50, 100)
   const profileId = await getProfileId()
@@ -19,7 +25,13 @@ export async function GET(req: Request) {
   const params: unknown[] = []
   const conds: string[] = []
 
-  if (topic) {
+  if (topicList.length > 0) {
+    params.push(topicList)
+    conds.push(`a.id IN (
+      SELECT at.article_id FROM article_topics at
+      JOIN topics t ON t.id = at.topic_id WHERE t.slug = ANY($${params.length}::text[])
+    )`)
+  } else if (topic) {
     params.push(topic)
     conds.push(`a.id IN (
       SELECT at.article_id FROM article_topics at
