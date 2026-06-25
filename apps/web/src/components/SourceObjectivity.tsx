@@ -4,6 +4,7 @@ import { ChevronDown, ExternalLink, Scale, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useBias } from '@/lib/bias-context'
 import type { Level } from '@/lib/bias'
+import { AD_SPEND_MAX_PCT, dependenceForSource, formatEuro } from '@/lib/dependence'
 import { useI18n } from '@/lib/i18n'
 
 type Source = {
@@ -124,6 +125,30 @@ export function SourceObjectivity() {
                       />
                     </button>
                   )}
+                  {(() => {
+                    const dep = dependenceForSource(s.name)
+                    if (!dep) return null
+                    return (
+                      <a
+                        href={dep.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={t('dep.tooltip')}
+                        className="mt-1 flex items-center gap-2"
+                      >
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground hover:text-foreground">
+                          💰 {dep.label} · {dep.pct.toString().replace('.', ',')}% ·{' '}
+                          {formatEuro(dep.amount)} ({dep.year})
+                        </span>
+                        <span className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+                          <span
+                            className="block h-full rounded-full bg-amber-500"
+                            style={{ width: `${Math.min(100, (dep.pct / AD_SPEND_MAX_PCT) * 100)}%` }}
+                          />
+                        </span>
+                      </a>
+                    )
+                  })()}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   {LEVELS.map((lv) => {
