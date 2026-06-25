@@ -104,6 +104,10 @@ export async function GET(req: Request) {
                 PARTITION BY a.source_id
                 ORDER BY COALESCE(a.published_at, a.ingested_at) DESC
               ),
+              -- Dentro de cada ronda, las NOTICIAS van antes que los vídeos de
+              -- YouTube, para que la actualidad lidere el feed y los muchos canales
+              -- de vídeo no la ahoguen.
+              (a.url LIKE '%youtube.com%' OR a.url LIKE '%youtu.be%'),
               COALESCE(a.published_at, a.ingested_at) DESC
      LIMIT $${params.length}`,
     params,

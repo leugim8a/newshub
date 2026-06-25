@@ -41,7 +41,11 @@ type Prefs = {
   hidden?: string[]
   chipsOpen?: boolean
   trendsRail?: boolean
+  sectionCap?: number
 }
+
+// Opciones del tope de noticias por categoría (en vista por secciones).
+const CAP_OPTIONS = [5, 8, 12, 20, 0] // 0 = sin tope
 
 const VIEWS: {
   id: View
@@ -88,6 +92,7 @@ export function FeedClient() {
   const [hidden, setHidden] = useState<string[]>([])
   const [chipsOpen, setChipsOpen] = useState(false)
   const [trendsRail, setTrendsRail] = useState(true)
+  const [sectionCap, setSectionCap] = useState(8)
   const [dragKey, setDragKey] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
 
@@ -96,6 +101,7 @@ export function FeedClient() {
     if (typeof p.sectioned === 'boolean') setSectioned(p.sectioned)
     if (typeof p.chipsOpen === 'boolean') setChipsOpen(p.chipsOpen)
     if (typeof p.trendsRail === 'boolean') setTrendsRail(p.trendsRail)
+    if (typeof p.sectionCap === 'number') setSectionCap(p.sectionCap)
     if (Array.isArray(p.sectionOrder)) setSectionOrder(p.sectionOrder.filter((k) => typeof k === 'string'))
     if (Array.isArray(p.hidden)) setHidden(p.hidden.filter((k) => typeof k === 'string'))
   }
@@ -127,11 +133,24 @@ export function FeedClient() {
       body: JSON.stringify({ prefs: p }),
     }).catch(() => {})
   }
-  const snapshot = (over: Prefs): Prefs => ({ view, sectioned, sectionOrder, hidden, chipsOpen, ...over })
+  const snapshot = (over: Prefs): Prefs => ({
+    view,
+    sectioned,
+    sectionOrder,
+    hidden,
+    chipsOpen,
+    trendsRail,
+    sectionCap,
+    ...over,
+  })
 
   const changeView = (v: View) => {
     setView(v)
     persist(snapshot({ view: v }))
+  }
+  const changeCap = (c: number) => {
+    setSectionCap(c)
+    persist(snapshot({ sectionCap: c }))
   }
   const toggleSections = () => {
     const ns = !sectioned
@@ -420,6 +439,25 @@ export function FeedClient() {
             <LayoutPanelTop className="h-4 w-4" />
             <span className="hidden sm:inline">{t('feed.sections')}</span>
           </button>
+          {sectioned && (
+            <div
+              className="flex items-center gap-1 rounded-full border border-border px-2 py-1 text-xs text-muted-foreground"
+              title={t('feed.capTitle')}
+            >
+              <span className="hidden sm:inline">{t('feed.cap')}</span>
+              <select
+                value={sectionCap}
+                onChange={(e) => changeCap(Number(e.target.value))}
+                className="bg-transparent font-medium text-foreground outline-none"
+              >
+                {CAP_OPTIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c === 0 ? '∞' : c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="flex items-center gap-1 rounded-full border border-border p-0.5">
             {VIEWS.map((v) => {
               const Icon = v.icon
@@ -549,7 +587,20 @@ export function FeedClient() {
                         </SecBtn>
                       </div>
                     </div>
-                    {renderItems(itemsOf(key))}
+                    {(() => {
+                      const all = itemsOf(key)
+                      const capped = sectionCap > 0 ? all.slice(0, sectionCap) : all
+                      return (
+                        <>
+                          {renderItems(capped)}
+                          {sectionCap > 0 && all.length > sectionCap && (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              +{all.length - sectionCap} {t('feed.moreInSection')}
+                            </p>
+                          )}
+                        </>
+                      )
+                    })()}
                   </section>
                 ))}
 
