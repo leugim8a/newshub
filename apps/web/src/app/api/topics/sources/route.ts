@@ -28,7 +28,24 @@ export async function GET(req: Request) {
 
   const { rows: lab } = await query<{ label: string }>(`SELECT label FROM topics WHERE id = $1`, [topic.id])
   const suggestions = await discoverSources(lab[0]?.label ?? slug, topic.lang === 'en' ? 'en' : 'es')
-  return NextResponse.json({ suggestions })
+
+  // Marca cuáles ya están dadas de alta (y si ya están ligadas a ESTE tema).
+  const urls = suggestions.map((s) => s.url)
+  const existing = urls.length
+    ? (
+        await query<{ url: string; topic_id: number | null }>(
+          `SELECT url, topic_id FROM sources WHERE url = ANY($1::text[])`,
+          [urls],
+        )
+      ).rows
+    : []
+  const byUrl = new Map(existing.map((r) => [r.url, r.topic_id]))
+  const marked = suggestions.map((s) => ({
+    ...s,
+    exists: byUrl.has(s.url),
+    boundHere: byUrl.get(s.url) === topic.id,
+  }))
+  return NextResponse.json({ suggestions: marked })
 }
 
 // POST { slug, url, name? } → añade una fuente (YouTube/RSS/web) ligada al tema.

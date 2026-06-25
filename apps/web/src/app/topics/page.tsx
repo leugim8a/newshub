@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronDown, Loader2, Pencil, Plus, Rss, Search, Sparkles, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, Loader2, Pencil, Plus, Rss, Search, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import ShinyText from '@/components/ShinyText'
 import { Button } from '@/components/ui/button'
@@ -266,9 +266,9 @@ function TopicRow({
   const [sourceUrl, setSourceUrl] = useState('')
   const [addingSource, setAddingSource] = useState(false)
   const [discovering, setDiscovering] = useState(false)
-  const [suggestions, setSuggestions] = useState<{ name: string; url: string; via: string }[] | null>(
-    null,
-  )
+  const [suggestions, setSuggestions] = useState<
+    { name: string; url: string; via: string; exists?: boolean; boundHere?: boolean }[] | null
+  >(null)
   const [editing, setEditing] = useState(false)
   const [editLabel, setEditLabel] = useState(tp.label)
   const [editKeywords, setEditKeywords] = useState((tp.keywords ?? []).join(', '))
@@ -330,7 +330,9 @@ function TopicRow({
     setSuggestions(null)
     try {
       const res = await fetch(`/api/topics/sources?slug=${encodeURIComponent(tp.slug)}`)
-      const d = (await res.json()) as { suggestions: { name: string; url: string; via: string }[] }
+      const d = (await res.json()) as {
+        suggestions: { name: string; url: string; via: string; exists?: boolean; boundHere?: boolean }[]
+      }
       setSuggestions(d.suggestions ?? [])
     } catch {
       setSuggestions([])
@@ -482,20 +484,36 @@ function TopicRow({
                     className="flex items-center justify-between gap-2 rounded-xl border border-border bg-background/40 px-3 py-2"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{s.name}</p>
+                      <p className="flex items-center gap-2 text-sm font-medium">
+                        <span className="truncate">{s.name}</span>
+                        {s.boundHere ? (
+                          <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-accent">
+                            {t('topics.inThisTopic')}
+                          </span>
+                        ) : s.exists ? (
+                          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
+                            {t('topics.alreadyAdded')}
+                          </span>
+                        ) : null}
+                      </p>
                       <p className="truncate text-xs text-muted-foreground">
                         {s.via === 'youtube' ? '▶ YouTube' : '🔗 RSS'} · {s.url}
                       </p>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => addSource(s.url, s.name)}
-                      disabled={addingSource}
-                      className="shrink-0"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
+                    {s.boundHere ? (
+                      <Check className="h-4 w-4 shrink-0 text-accent" />
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => addSource(s.url, s.name)}
+                        disabled={addingSource}
+                        className="shrink-0"
+                        title={s.exists ? t('topics.alsoHere') : undefined}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 ))
               )}
