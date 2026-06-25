@@ -6,7 +6,6 @@ import { useParams } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { BiasBar } from '@/components/BiasBar'
 import { Button } from '@/components/ui/button'
-import { dependenceForSource } from '@/lib/dependence'
 import { relativeTime, useI18n } from '@/lib/i18n'
 
 type Article = {
@@ -163,21 +162,6 @@ export default function StoryPage() {
                           {a.objectivity_score}/100
                         </span>
                       )}
-                      {(() => {
-                        const dep = dependenceForSource(a.source_name)
-                        if (!dep) return null
-                        return (
-                          <span
-                            className={
-                              'rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-500' +
-                              (a.objectivity_score == null ? ' ml-auto' : '')
-                            }
-                            title={`${t('dep.tooltip')} — ${dep.label}`}
-                          >
-                            💰 {dep.pct.toString().replace('.', ',')}%
-                          </span>
-                        )
-                      })()}
                     </div>
                     <p className="text-sm font-medium leading-snug transition-colors group-hover:text-accent">
                       {a.title}
