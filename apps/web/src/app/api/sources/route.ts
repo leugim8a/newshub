@@ -11,9 +11,7 @@ const parser = new Parser({ timeout: 15000 })
 export async function GET() {
   const { rows } = await query(
     `SELECT s.id, s.name, s.url, s.lang, s.kind, s.active, s.last_fetch, s.objectivity,
-            count(a.id) AS article_count,
-            (SELECT round(avg(os.score))::int FROM objectivity_scores os WHERE os.source_id = s.id) AS ai_avg,
-            (SELECT count(*)::int FROM objectivity_scores os WHERE os.source_id = s.id) AS ai_count
+            count(a.id) AS article_count
      FROM sources s
      LEFT JOIN articles a ON a.source_id = s.id
      WHERE s.kind IN ('rss', 'sitemap', 'scrape')

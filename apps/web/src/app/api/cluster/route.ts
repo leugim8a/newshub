@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { llmEnabled, summarizeCluster } from '@/lib/llm'
-import { scoreAndStoreCluster } from '@/lib/score-cluster'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -26,7 +25,6 @@ export async function GET(req: Request) {
 
   const { rows: articles } = await query<{
     id: number
-    source_id: number | null
     title: string
     url: string
     summary: string | null
@@ -34,7 +32,7 @@ export async function GET(req: Request) {
     published_at: string
     source_name: string | null
   }>(
-    `SELECT a.id, a.source_id, a.title, a.url, a.summary, a.image_url,
+    `SELECT a.id, a.title, a.url, a.summary, a.image_url,
             COALESCE(a.published_at, a.ingested_at) AS published_at,
             s.name AS source_name
      FROM articles a LEFT JOIN sources s ON s.id = a.source_id
@@ -62,45 +60,10 @@ export async function GET(req: Request) {
     }
   }
 
-  // Análisis de sesgo por cobertura (IA comparativa). Si el cluster aún no se ha
-  // puntuado y hay ≥2 fuentes, se puntúa bajo demanda (texto completo + Gemini).
-  let { rows: scores } = await query<{ source_id: number; score: number; reason: string | null }>(
-    `SELECT source_id, score, reason FROM objectivity_scores WHERE cluster_id = $1`,
-    [id],
-  )
-  if (scores.length === 0 && llmEnabled() && cluster.source_count >= 2) {
-    try {
-      await scoreAndStoreCluster(id, cluster.lang === 'en' ? 'en' : 'es')
-      const r = await query<{ source_id: number; score: number; reason: string | null }>(
-        `SELECT source_id, score, reason FROM objectivity_scores WHERE cluster_id = $1`,
-        [id],
-      )
-      scores = r.rows
-    } catch {
-      /* si falla, seguimos sin análisis */
-    }
-  }
-  const bySource = new Map(scores.map((s) => [s.source_id, s]))
-
-  const articlesOut = articles.map((a) => {
-    const sc = a.source_id != null ? bySource.get(a.source_id) : undefined
-    return {
-      id: a.id,
-      title: a.title,
-      url: a.url,
-      summary: a.summary,
-      image_url: a.image_url,
-      published_at: a.published_at,
-      source_name: a.source_name,
-      objectivity_score: sc?.score ?? null,
-      objectivity_reason: sc?.reason ?? null,
-    }
-  })
-
   return NextResponse.json({
     cluster: { id: cluster.id, label: cluster.label, size: cluster.size, source_count: cluster.source_count },
     summary,
     bullets: bullets ?? [],
-    articles: articlesOut,
+    articles,
   })
 }

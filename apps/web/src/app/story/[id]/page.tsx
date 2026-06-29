@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowLeft, ExternalLink, Layers, Pause, Scale, Volume2 } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Layers, Pause, Volume2 } from 'lucide-react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
@@ -16,15 +16,8 @@ type Article = {
   image_url: string | null
   published_at: string
   source_name: string | null
-  objectivity_score: number | null
-  objectivity_reason: string | null
 }
 
-function scoreColor(score: number): string {
-  if (score >= 72) return 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30'
-  if (score >= 50) return 'bg-amber-400/15 text-amber-500 border-amber-400/30'
-  return 'bg-rose-500/15 text-rose-500 border-rose-500/30'
-}
 type Data = {
   cluster: { id: number; label: string; size: number; source_count: number }
   summary: string | null
@@ -38,7 +31,6 @@ export default function StoryPage() {
   const [data, setData] = useState<Data | null>(null)
   const [loading, setLoading] = useState(true)
   const [speaking, setSpeaking] = useState(false)
-  const [showAnalysis, setShowAnalysis] = useState(false)
   const uttRef = useRef<SpeechSynthesisUtterance | null>(null)
 
   useEffect(() => {
@@ -128,61 +120,32 @@ export default function StoryPage() {
           </div>
 
           {/* Cobertura: todas las fuentes + análisis de sesgo por cobertura */}
-          <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-accent">
-              {t('story.coverage')} ({data.articles.length})
-            </h2>
-            {data.articles.some((a) => a.objectivity_score != null) && (
-              <Button variant="outline" size="sm" onClick={() => setShowAnalysis((v) => !v)}>
-                <Scale className="h-4 w-4" />
-                {showAnalysis ? t('story.hideAnalysis') : t('story.analysis')}
-              </Button>
-            )}
-          </div>
+          <h2 className="mb-3 border-b border-border pb-2 text-sm font-semibold uppercase tracking-wide text-accent">
+            {t('story.coverage')} ({data.articles.length})
+          </h2>
           <div className="flex flex-col gap-2">
             {data.articles.map((a) => (
-              <div
+              <a
                 key={a.id}
-                className="rounded-xl border border-border bg-card transition-colors hover:border-accent/40"
+                href={a.url}
+                target="_blank"
+                rel="noreferrer"
+                className="group flex items-baseline gap-2 rounded-xl border border-border bg-card p-3 transition-colors hover:border-accent/40"
               >
-                <a href={a.url} target="_blank" rel="noreferrer" className="group flex items-baseline gap-2 p-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground/80">{a.source_name ?? ''}</span>
-                      <span>·</span>
-                      <span>{relativeTime(a.published_at, lang)}</span>
-                      {a.objectivity_score != null && (
-                        <span
-                          className={
-                            'ml-auto rounded-full border px-2 py-0.5 text-[11px] font-semibold ' +
-                            scoreColor(a.objectivity_score)
-                          }
-                          title={t('story.objectivityScore')}
-                        >
-                          {a.objectivity_score}/100
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm font-medium leading-snug transition-colors group-hover:text-accent">
-                      {a.title}
-                    </p>
+                <div className="min-w-0 flex-1">
+                  <div className="mb-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground/80">{a.source_name ?? ''}</span>
+                    <span>·</span>
+                    <span>{relativeTime(a.published_at, lang)}</span>
                   </div>
-                  <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100" />
-                </a>
-                {showAnalysis && a.objectivity_reason && (
-                  <div className="border-t border-border px-3 py-2">
-                    <p className="flex gap-1.5 text-xs leading-relaxed text-muted-foreground">
-                      <Scale className="mt-0.5 h-3 w-3 shrink-0 text-accent" />
-                      {a.objectivity_reason}
-                    </p>
-                  </div>
-                )}
-              </div>
+                  <p className="text-sm font-medium leading-snug transition-colors group-hover:text-accent">
+                    {a.title}
+                  </p>
+                </div>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100" />
+              </a>
             ))}
           </div>
-          {showAnalysis && (
-            <p className="mt-3 text-xs text-muted-foreground">{t('story.analysisNote')}</p>
-          )}
         </>
       )}
     </div>

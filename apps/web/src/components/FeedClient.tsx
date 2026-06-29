@@ -11,10 +11,8 @@ import {
   LayoutGrid,
   LayoutPanelTop,
   Newspaper,
-  Sparkles,
   X,
 } from 'lucide-react'
-import Link from 'next/link'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ArticleCard, type Article } from '@/components/ArticleCard'
 import { NotificationBell } from '@/components/NotificationBell'
@@ -364,13 +362,6 @@ export function FeedClient() {
             <ShinyText text={t('feed.title')} />
           </h1>
           <div className="flex items-center gap-2">
-            <Link
-              href="/briefing"
-              className="flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
-            >
-              <Sparkles className="h-4 w-4" />
-              <span className="hidden sm:inline">{t('briefing.nav')}</span>
-            </Link>
             <button
               type="button"
               onClick={() => setLang(lang === 'es' ? 'en' : 'es')}

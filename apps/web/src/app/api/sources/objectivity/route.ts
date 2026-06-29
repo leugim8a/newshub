@@ -1,31 +1,15 @@
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { levelFromAvg } from '@/lib/objectivity'
 
 export const dynamic = 'force-dynamic'
 
-// GET — mapa { nombre de fuente → objetividad efectiva } para pintar las barras.
-// Efectiva = rating manual del usuario si existe; si no, la sugerencia de la IA
-// (media de objectivity_scores) cuando hay muestra suficiente.
+// GET — mapa { nombre de fuente → objetividad } según la clasificación MANUAL del
+// usuario. Lo consume el BiasProvider para pintar las barras de las historias.
 export async function GET() {
-  const { rows } = await query<{
-    name: string
-    objectivity: string | null
-    ai_avg: number | null
-    ai_count: number
-  }>(
-    `SELECT s.name, s.objectivity,
-            round(avg(os.score))::int AS ai_avg,
-            count(os.score)::int      AS ai_count
-       FROM sources s
-       LEFT JOIN objectivity_scores os ON os.source_id = s.id
-      GROUP BY s.id`,
+  const { rows } = await query<{ name: string; objectivity: string }>(
+    `SELECT name, objectivity FROM sources WHERE objectivity IS NOT NULL`,
   )
   const overrides: Record<string, string> = {}
-  for (const r of rows) {
-    let level: string | null = r.objectivity
-    if (!level && r.ai_avg != null) level = levelFromAvg(r.ai_avg, r.ai_count)
-    if (level) overrides[r.name] = level
-  }
+  for (const r of rows) overrides[r.name] = r.objectivity
   return NextResponse.json({ overrides })
 }
