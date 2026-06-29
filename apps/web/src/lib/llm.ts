@@ -1,4 +1,5 @@
-// Cliente LLM (Gemini AI Studio) para resúmenes. Sin clave → degradación elegante.
+// Cliente LLM (Gemini AI Studio). Sin clave → degradación elegante.
+// Único uso restante: descubrimiento de fuentes con IA ("Sugerir con IA"), bajo demanda.
 const KEY = process.env.GEMINI_API_KEY
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 
@@ -34,85 +35,5 @@ export async function gemini(prompt: string, maxTokens = 600): Promise<string | 
     return data.candidates?.[0]?.content?.parts?.[0]?.text ?? null
   } catch {
     return null
-  }
-}
-
-function parseJson<T>(raw: string): T | null {
-  try {
-    return JSON.parse(raw.replace(/```json|```/g, '').trim()) as T
-  } catch {
-    return null
-  }
-}
-
-// Traduce un resumen (texto + bullets) al idioma destino, conservando la estructura.
-export async function translateSummary(
-  summary: string,
-  bullets: string[],
-  to: 'es' | 'en',
-): Promise<{ summary: string; bullets: string[] } | null> {
-  const langName = to === 'en' ? 'English' : 'español'
-  const prompt = `Traduce los valores de este JSON al ${langName}. NO traduzcas las claves. Devuelve SOLO el JSON traducido, misma estructura:
-${JSON.stringify({ summary, bullets })}`
-  const out = await gemini(prompt, 800)
-  if (!out) return null
-  const json = parseJson<{ summary?: string; bullets?: string[] }>(out)
-  if (!json) return null
-  return {
-    summary: String(json.summary ?? ''),
-    bullets: Array.isArray(json.bullets) ? json.bullets.map(String) : [],
-  }
-}
-
-// Resume un artículo individual (botón "Resumir" bajo demanda).
-export async function summarizeArticle(
-  title: string,
-  body: string | null,
-  lang: 'es' | 'en' = 'es',
-): Promise<{ summary: string; bullets: string[] } | null> {
-  const langName = lang === 'en' ? 'English' : 'español'
-  const prompt = `Eres un editor de noticias. Resume esta noticia en ${langName}:
-1) Un resumen claro de 2 frases.
-2) 3 puntos clave concisos.
-Devuelve SOLO JSON válido: {"summary":"...","bullets":["...","...","..."]}
-
-Titular: ${title}
-${body ? `Texto: ${body.slice(0, 1200)}` : ''}`
-  const out = await gemini(prompt)
-  if (!out) return null
-  const json = parseJson<{ summary?: string; bullets?: string[] }>(out)
-  if (!json) return null
-  return {
-    summary: String(json.summary ?? ''),
-    bullets: Array.isArray(json.bullets) ? json.bullets.map(String).slice(0, 4) : [],
-  }
-}
-
-// Resume una historia (cluster) a partir de las coberturas de varios medios.
-export async function summarizeCluster(
-  headline: string,
-  articles: { title: string; summary: string | null; source: string | null }[],
-  lang: 'es' | 'en' = 'es',
-): Promise<{ summary: string; bullets: string[] } | null> {
-  const ctx = articles
-    .slice(0, 8)
-    .map((a) => `- [${a.source ?? ''}] ${a.title}. ${(a.summary ?? '').slice(0, 240)}`)
-    .join('\n')
-  const langName = lang === 'en' ? 'English' : 'español'
-  const prompt = `Eres un editor de noticias. Estas son coberturas de la MISMA historia por varios medios. En ${langName}, escribe:
-1) Un resumen NEUTRAL de 2 frases.
-2) 3 puntos clave concisos.
-Devuelve SOLO JSON válido: {"summary":"...","bullets":["...","...","..."]}
-
-Titular: ${headline}
-Coberturas:
-${ctx}`
-  const out = await gemini(prompt)
-  if (!out) return null
-  const json = parseJson<{ summary?: string; bullets?: string[] }>(out)
-  if (!json) return null
-  return {
-    summary: String(json.summary ?? ''),
-    bullets: Array.isArray(json.bullets) ? json.bullets.map(String).slice(0, 4) : [],
   }
 }
