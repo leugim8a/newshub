@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, ChevronDown, Loader2, Pencil, Plus, Rss, Search, Sparkles, Trash2 } from 'lucide-react'
+import { ChevronDown, Loader2, Pencil, Plus, Rss, Search, Trash2 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import ShinyText from '@/components/ShinyText'
 import { Button } from '@/components/ui/button'
@@ -265,10 +265,6 @@ function TopicRow({
   const [sourcesOpen, setSourcesOpen] = useState(false)
   const [sourceUrl, setSourceUrl] = useState('')
   const [addingSource, setAddingSource] = useState(false)
-  const [discovering, setDiscovering] = useState(false)
-  const [suggestions, setSuggestions] = useState<
-    { name: string; url: string; via: string; exists?: boolean; boundHere?: boolean }[] | null
-  >(null)
   const [editing, setEditing] = useState(false)
   const [editLabel, setEditLabel] = useState(tp.label)
   const [editKeywords, setEditKeywords] = useState((tp.keywords ?? []).join(', '))
@@ -313,7 +309,6 @@ function TopicRow({
       if (d.ok) {
         pushToast({ title: `${t('topics.sourceAdded')} (${d.via})`, body: `#${tp.label}` })
         setSourceUrl('')
-        setSuggestions((s) => s?.filter((x) => x.url !== u) ?? null)
         onSearched?.()
       } else {
         pushToast({ title: t('topics.sourceFail') })
@@ -322,22 +317,6 @@ function TopicRow({
       pushToast({ title: t('topics.sourceFail') })
     } finally {
       setAddingSource(false)
-    }
-  }
-
-  const discover = async () => {
-    setDiscovering(true)
-    setSuggestions(null)
-    try {
-      const res = await fetch(`/api/topics/sources?slug=${encodeURIComponent(tp.slug)}`)
-      const d = (await res.json()) as {
-        suggestions: { name: string; url: string; via: string; exists?: boolean; boundHere?: boolean }[]
-      }
-      setSuggestions(d.suggestions ?? [])
-    } catch {
-      setSuggestions([])
-    } finally {
-      setDiscovering(false)
     }
   }
 
@@ -453,7 +432,7 @@ function TopicRow({
 
       {sourcesOpen && (
         <div className="border-t border-border p-4">
-          {/* Añadir manual */}
+          {/* Añadir fuente manual: pega una URL de YouTube, RSS o web (descubre su RSS). */}
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
               value={sourceUrl}
@@ -466,59 +445,7 @@ function TopicRow({
               {addingSource ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               {t('topics.add2')}
             </Button>
-            <Button variant="outline" size="sm" onClick={discover} disabled={discovering}>
-              {discovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {discovering ? t('topics.discovering') : t('topics.discover')}
-            </Button>
           </div>
-
-          {/* Sugerencias IA */}
-          {suggestions && (
-            <div className="mt-3 flex flex-col gap-1.5">
-              {suggestions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">—</p>
-              ) : (
-                suggestions.map((s) => (
-                  <div
-                    key={s.url}
-                    className="flex items-center justify-between gap-2 rounded-xl border border-border bg-background/40 px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="flex items-center gap-2 text-sm font-medium">
-                        <span className="truncate">{s.name}</span>
-                        {s.boundHere ? (
-                          <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-accent">
-                            {t('topics.inThisTopic')}
-                          </span>
-                        ) : s.exists ? (
-                          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
-                            {t('topics.alreadyAdded')}
-                          </span>
-                        ) : null}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {s.via === 'youtube' ? '▶ YouTube' : '🔗 RSS'} · {s.url}
-                      </p>
-                    </div>
-                    {s.boundHere ? (
-                      <Check className="h-4 w-4 shrink-0 text-accent" />
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => addSource(s.url, s.name)}
-                        disabled={addingSource}
-                        className="shrink-0"
-                        title={s.exists ? t('topics.alsoHere') : undefined}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
         </div>
       )}
     </div>

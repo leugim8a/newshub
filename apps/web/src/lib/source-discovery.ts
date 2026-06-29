@@ -1,6 +1,5 @@
 import Parser from 'rss-parser'
 import { query } from '@/lib/db'
-import { gemini } from '@/lib/llm'
 import { channelFeed, resolveChannelId } from '@/lib/youtube'
 import { processArticles } from '@/ingest'
 import { rssConnector } from '@/ingest/rss'
@@ -111,36 +110,4 @@ export async function addBoundSource(
     [topicId],
   )
   return { sourceId, tagged: rows[0]?.n ?? 0 }
-}
-
-export type Suggestion = { name: string; url: string; via: 'youtube' | 'rss' | 'web' }
-
-// Pide a la IA fuentes de calidad para un tema y VALIDA cada una (resuelve el canal
-// de YouTube o comprueba el RSS). Solo devuelve las que existen de verdad.
-export async function discoverSources(label: string, lang: 'es' | 'en'): Promise<Suggestion[]> {
-  const langName = lang === 'en' ? 'English' : 'español'
-  const prompt = `Eres un experto en encontrar fuentes para seguir un tema. Para el tema "${label}", sugiere 8 fuentes de CALIDAD y ESPECÍFICAS, preferiblemente en ${langName}. Prioriza canales de YouTube reales (con su handle exacto que empiece por @) y blogs/medios con RSS.
-Devuelve SOLO JSON válido: [{"name":"...","youtube":"@handle o null","url":"https://web o null"}]`
-  const out = await gemini(prompt, 1000)
-  if (!out) return []
-  let items: { name?: string; youtube?: string | null; url?: string | null }[]
-  try {
-    items = JSON.parse(out.replace(/```json|```/g, '').trim())
-  } catch {
-    return []
-  }
-  if (!Array.isArray(items)) return []
-
-  const seen = new Set<string>()
-  const result: Suggestion[] = []
-  for (const it of items.slice(0, 10)) {
-    const name = String(it.name ?? '').slice(0, 120)
-    let ns: NormalizedSource | null = null
-    if (it.youtube) ns = await normalizeSourceInput(it.youtube)
-    if (!ns && it.url) ns = await normalizeSourceInput(it.url)
-    if (!ns || seen.has(ns.url)) continue
-    seen.add(ns.url)
-    result.push({ name: name || ns.name, url: ns.url, via: ns.via })
-  }
-  return result
 }
